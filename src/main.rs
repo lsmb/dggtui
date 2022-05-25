@@ -36,8 +36,6 @@ use futures::stream::StreamExt;
 use websocket_lite::{Message, Opcode, Result};
 
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
-use tokio::sync::watch;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Result as JSON_Result;
@@ -292,22 +290,37 @@ fn get_tier(features: Vec<String>) -> i8 {
             "flair3" => tiers.push(2),
             "flair1" => tiers.push(3),
             "flair8" => tiers.push(4),
+            "admin" => tiers.push(6),
             _ => (),
         }
     }
     *tiers.iter().max().unwrap() as i8
 }
 
-// impl Color {
-//     fn from_tier(tier: i8) {}
-// }
+trait FromTier {
+    fn from_tier(tier: i8) -> Color;
+}
+
+impl FromTier for Color {
+    fn from_tier(tier: i8) -> Color {
+        match tier {
+            0 => return Color::White,
+            1 => return Color::Blue,
+            2 => return Color::Green,
+            3 => return Color::Cyan,
+            4 => return Color::Magenta,
+            6 => return Color::Yellow,
+            _ => return Color::White,
+        }
+    }
+}
 
 fn format_message(msg: ParsedMessage) -> Spans<'static> {
     Spans::from(vec![
         Span::styled(
             format!("<{}> ", msg.nick),
             Style::default()
-                .fg(Color::Blue)
+                .fg(Color::from_tier(get_tier(msg.features)))
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(msg.data, Style::default().fg(Color::White)),
