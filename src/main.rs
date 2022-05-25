@@ -36,6 +36,7 @@ use futures::stream::StreamExt;
 use websocket_lite::{Message, Opcode, Result};
 
 use tokio::sync::mpsc;
+use tokio::sync::watch;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Result as JSON_Result;
@@ -55,22 +56,22 @@ enum InputMode {
 
 struct StatefulList<T> {
     state: ListState,
-    items: Vec<T>,
+    messages: Vec<T>,
 }
 
 impl<T> StatefulList<T> {
-    fn with_items(items: Vec<T>) -> StatefulList<T> {
+    fn with_items(messages: Vec<T>) -> StatefulList<T> {
         StatefulList {
             state: ListState::default(),
-            items,
+            messages,
         }
     }
 
     fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
-                if i >= self.items.len() - 1 {
-                    0
+                if i >= self.messages.len() - 1 {
+                    self.messages.len() - 1
                 } else {
                     i + 1
                 }
@@ -84,7 +85,7 @@ impl<T> StatefulList<T> {
         let i = match self.state.selected() {
             Some(i) => {
                 if i == 0 {
-                    self.items.len() - 1
+                    0
                 } else {
                     i - 1
                 }
@@ -97,6 +98,10 @@ impl<T> StatefulList<T> {
     fn unselect(&mut self) {
         self.state.select(None);
     }
+
+    fn bottom(&mut self) {
+        self.state.select(Some(self.messages.len() - 1));
+    }
 }
 
 /// App holds the state of the application
@@ -106,9 +111,7 @@ struct App {
     /// Current input mode
     input_mode: InputMode,
     /// History of recorded messages
-    messages: Vec<String>,
-
-    items: StatefulList<(String, usize)>,
+    message_list: StatefulList<(String, usize)>,
 }
 
 impl<'a> Default for App {
@@ -116,8 +119,7 @@ impl<'a> Default for App {
         App {
             input: String::new(),
             input_mode: InputMode::Normal,
-            messages: Vec::new(),
-            items: StatefulList::with_items(vec![]),
+            message_list: StatefulList::with_items(vec![]),
         }
     }
 }
@@ -126,7 +128,7 @@ impl<'a> App {
     fn on_tick(&mut self) {
         // let event = self.events.remove(0);
         // self.events.push(event);
-        self.items.items.push(("yooo".to_string(), 1));
+        self.message_list.messages.push(("yooo".to_string(), 1));
         self.input.push('h');
     }
 }
@@ -141,7 +143,8 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // let (tx, mut rx) = watch::channel("hello");
-    let (tx, mut rx) = mpsc::channel(32);
+    // let (tx, mut rx) = mpsc::channel();
+    let (mut tx, rx) = watch::channel("".to_string());
 
     tokio::spawn(async move {
         run_ws(tx).await.unwrap_or_else(|e| {
@@ -170,7 +173,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn run_ws(tx: tokio::sync::mpsc::Sender<String>) -> Result<()> {
+async fn run_ws(tx: tokio::sync::watch::Sender<String>) -> Result<()> {
     let url = "wss://chat.destiny.gg/ws".to_owned();
     let builder = websocket_lite::ClientBuilder::new(&url)?;
 
@@ -198,7 +201,7 @@ async fn run_ws(tx: tokio::sync::mpsc::Sender<String>) -> Result<()> {
 
                 // ws_stream.send(msg).await?
                 let msg: String = msg.as_text().unwrap().to_string();
-                tx.send(msg).await;
+                tx.send(msg)?;
             }
             Opcode::Binary => ws_stream.send(msg).await?,
             Opcode::Ping => ws_stream.send(Message::pong(msg.into_data())).await?,
@@ -221,7 +224,7 @@ fn parse_message(msg: &str) -> JSON_Result<ParsedMessage> {
 fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
     mut app: App,
-    mut rx: tokio::sync::mpsc::Receiver<String>,
+    mut rx: tokio::sync::watch::Receiver<String>,
     tick_rate: Duration,
 ) -> io::Result<()> {
     let mut last_tick = Instant::now();
@@ -231,15 +234,17 @@ fn run_app<B: Backend>(
             last_tick = Instant::now();
         }
 
-        match rx.try_recv() {
-            Ok(msg) => {
-                if msg.starts_with("MSG ") {
-                    // let parsed_output: JSON_Result<ParsedMessage>;
-                    // parsed_output = parse_message(&msg[4..]);
-                    app.items.items.push((msg.to_owned(), 1));
+        if rx.has_changed().unwrap() {
+            let msg = &*rx.borrow_and_update();
+            if msg.starts_with("MSG ") {
+                // let parsed_output: JSON_Result<ParsedMessage>;
+                // parsed_output = parse_message(&msg[4..]);
+                app.message_list.messages.push((msg.to_owned(), 1));
+                match app.input_mode {
+                    InputMode::Normal => app.message_list.bottom(),
+                    InputMode::Editing => app.message_list.bottom(),
                 }
             }
-            _ => (),
         }
         terminal.draw(|f| ui(f, &mut app))?;
 
@@ -253,15 +258,16 @@ fn run_app<B: Backend>(
                         KeyCode::Char('q') => {
                             return Ok(());
                         }
-                        KeyCode::Down => app.items.next(),
-                        KeyCode::Up => app.items.previous(),
-                        KeyCode::Left => app.items.unselect(),
+                        KeyCode::Char('g') => app.message_list.bottom(),
+                        KeyCode::Down => app.message_list.next(),
+                        KeyCode::Up => app.message_list.previous(),
+                        KeyCode::Left => app.message_list.unselect(),
                         _ => {}
                     },
                     InputMode::Editing => match key.code {
                         KeyCode::Enter => {
                             let message: String = app.input.drain(..).collect();
-                            app.items.items.push((message.to_owned(), 1));
+                            app.message_list.messages.push((message.to_owned(), 1));
                         }
                         KeyCode::Char(c) => {
                             app.input.push(c);
@@ -304,19 +310,19 @@ trait FromTier {
 impl FromTier for Color {
     fn from_tier(tier: i8) -> Color {
         match tier {
-            0 => return Color::White,
-            1 => return Color::Blue,
-            2 => return Color::Green,
-            3 => return Color::Cyan,
-            4 => return Color::Magenta,
-            6 => return Color::Yellow,
-            _ => return Color::White,
+            0 => Color::White,
+            1 => Color::Blue,
+            2 => Color::Green,
+            3 => Color::Cyan,
+            4 => Color::Magenta,
+            6 => Color::Yellow,
+            _ => Color::White,
         }
     }
 }
 
-fn format_message(msg: ParsedMessage) -> Spans<'static> {
-    Spans::from(vec![
+fn format_message(msg: ParsedMessage, width: u16) -> Vec<Spans<'static>> {
+    let message: Vec<Spans> = vec![Spans::from(vec![
         Span::styled(
             format!("<{}> ", msg.nick),
             Style::default()
@@ -324,17 +330,21 @@ fn format_message(msg: ParsedMessage) -> Spans<'static> {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(msg.data, Style::default().fg(Color::White)),
-    ])
+    ])];
+
+    // println!("Message width: {}", message.width());
+
+    message
 }
 fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .margin(2)
+        .margin(1)
         .constraints(
             [
-                Constraint::Length(1),
-                Constraint::Length(3),
                 Constraint::Min(1),
+                Constraint::Length(3),
+                Constraint::Length(1),
             ]
             .as_ref(),
         )
@@ -365,7 +375,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let mut text = Text::from(Spans::from(msg));
     text.patch_style(style);
     let help_message = Paragraph::new(text);
-    f.render_widget(help_message, chunks[0]);
+    f.render_widget(help_message, chunks[2]);
 
     let input = Paragraph::new(app.input.as_ref())
         .style(match app.input_mode {
@@ -390,24 +400,12 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         }
     }
 
-    // let messages: Vec<ListItem> = app
-    //     .messages
-    //     .iter()
-    //     .enumerate()
-    //     .map(|(i, m)| {
-    //         let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
-    //         ListItem::new(content)
-    //     })
-    //     .collect();
-    // let messages =
-    //     List::new(messages).block(Block::default().borders(Borders::ALL).title("Messages"));
-
-    let items: Vec<ListItem> = app
-        .items
-        .items
+    let messages: Vec<ListItem> = app
+        .message_list
+        .messages
         .iter()
         .map(|i| {
-            let mut lines = vec![Spans::from(i.0.as_str())];
+            let mut lines = vec![/* Spans::from(i.0.as_str()) */];
             // for _ in 0..i.1 {
             //     lines.push(Spans::from(Span::styled(
             //         "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
@@ -417,22 +415,38 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
             let parsed_output: JSON_Result<ParsedMessage>;
             parsed_output = parse_message(&i.0.as_str()[4..]);
-            let formattedMessage: Spans = format_message(parsed_output.unwrap());
-            lines.push(formattedMessage);
+            let formatted_message: Vec<Spans> =
+                format_message(parsed_output.unwrap(), chunks[0].width);
+            for line in formatted_message {
+                lines.push(line)
+            }
             ListItem::new(lines).style(Style::default().fg(Color::White).bg(Color::Black))
         })
         .collect();
 
     // Create a List from all list items and highlight the currently selected one
-    let items = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("List"))
-        .highlight_style(
-            Style::default()
-                .bg(Color::LightGreen)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol(">> ");
 
+    // match app.input_mode {
+    //     InputMode::Normal => ()
+    // }
+
+    let messages = List::new(messages)
+        .block(Block::default().borders(Borders::ALL).title("Messages"))
+        .highlight_style(match app.input_mode {
+            InputMode::Normal => Style::default(),
+            // Style::default()
+            // .bg(Color::LightGreen)
+            // .add_modifier(Modifier::BOLD),
+            InputMode::Editing => Style::default(),
+        })
+        .highlight_symbol(match app.input_mode {
+            InputMode::Normal => "",
+            InputMode::Editing => "",
+        });
+
+    // println!("Size is: {}", f.size().width);
+
+    // println!("{}", chunks[0].y);
     // f.render_widget(messages, chunks[2]);
-    f.render_stateful_widget(items, chunks[2], &mut app.items.state);
+    f.render_stateful_widget(messages, chunks[0], &mut app.message_list.state);
 }
