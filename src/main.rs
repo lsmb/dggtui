@@ -19,7 +19,7 @@ use std::{
     io,
     time::{Duration, Instant},
 };
-use termion::{clear, color, cursor, cursor::DetectCursorPos, raw::IntoRawMode, style};
+// use termion::{clear, color, cursor, cursor::DetectCursorPos, raw::IntoRawMode, style};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
@@ -119,25 +119,7 @@ impl<'a> Default for App {
             input: String::new(),
             input_mode: InputMode::Normal,
             messages: Vec::new(),
-            items: StatefulList::with_items(vec![
-                ("Item18".to_string(), 1),
-                ("Item19".to_string(), 2),
-                ("Item20".to_string(), 20),
-                ("Item18".to_string(), 1),
-                ("Item19".to_string(), 2),
-                ("Item18".to_string(), 1),
-                ("Item18".to_string(), 1),
-                ("Item19".to_string(), 2),
-                ("Item18".to_string(), 1),
-                ("Item19".to_string(), 2),
-                ("Item18".to_string(), 1),
-                ("Item19".to_string(), 2),
-                ("Item19".to_string(), 2),
-                ("Item18".to_string(), 1),
-                ("Item19".to_string(), 2),
-                ("Item18".to_string(), 1),
-                ("Item19".to_string(), 2),
-            ]),
+            items: StatefulList::with_items(vec![]),
         }
     }
 }
@@ -244,17 +226,6 @@ fn run_app<B: Backend>(
     mut rx: tokio::sync::mpsc::Receiver<String>,
     tick_rate: Duration,
 ) -> io::Result<()> {
-    match rx.try_recv() {
-        Ok(msg) => {
-            if msg.starts_with("MSG ") {
-                // let parsed_output: JSON_Result<ParsedMessage>;
-                // parsed_output = parse_message(&msg[4..]);
-                app.items.items.push((msg.to_owned(), 1));
-            }
-        }
-        _ => (),
-    }
-
     let mut last_tick = Instant::now();
     loop {
         if last_tick.elapsed() >= tick_rate {
@@ -264,47 +235,84 @@ fn run_app<B: Backend>(
 
         match rx.try_recv() {
             Ok(msg) => {
-                app.items.items.push((msg.to_owned(), 1));
+                if msg.starts_with("MSG ") {
+                    // let parsed_output: JSON_Result<ParsedMessage>;
+                    // parsed_output = parse_message(&msg[4..]);
+                    app.items.items.push((msg.to_owned(), 1));
+                }
             }
             _ => (),
         }
         terminal.draw(|f| ui(f, &mut app))?;
 
-        if let Event::Key(key) = event::read()? {
-            match app.input_mode {
-                InputMode::Normal => match key.code {
-                    KeyCode::Char('e') => {
-                        app.input_mode = InputMode::Editing;
-                    }
-                    KeyCode::Char('q') => {
-                        return Ok(());
-                    }
-                    KeyCode::Down => app.items.next(),
-                    KeyCode::Up => app.items.previous(),
-                    KeyCode::Left => app.items.unselect(),
-                    _ => {}
-                },
-                InputMode::Editing => match key.code {
-                    KeyCode::Enter => {
-                        let message: String = app.input.drain(..).collect();
-                        app.items.items.push((message.to_owned(), 1));
-                    }
-                    KeyCode::Char(c) => {
-                        app.input.push(c);
-                    }
-                    KeyCode::Backspace => {
-                        app.input.pop();
-                    }
-                    KeyCode::Esc => {
-                        app.input_mode = InputMode::Normal;
-                    }
-                    _ => {}
-                },
+        if crossterm::event::poll(tick_rate).unwrap() {
+            if let Event::Key(key) = event::read()? {
+                match app.input_mode {
+                    InputMode::Normal => match key.code {
+                        KeyCode::Char('e') => {
+                            app.input_mode = InputMode::Editing;
+                        }
+                        KeyCode::Char('q') => {
+                            return Ok(());
+                        }
+                        KeyCode::Down => app.items.next(),
+                        KeyCode::Up => app.items.previous(),
+                        KeyCode::Left => app.items.unselect(),
+                        _ => {}
+                    },
+                    InputMode::Editing => match key.code {
+                        KeyCode::Enter => {
+                            let message: String = app.input.drain(..).collect();
+                            app.items.items.push((message.to_owned(), 1));
+                        }
+                        KeyCode::Char(c) => {
+                            app.input.push(c);
+                        }
+                        KeyCode::Backspace => {
+                            app.input.pop();
+                        }
+                        KeyCode::Esc => {
+                            app.input_mode = InputMode::Normal;
+                        }
+                        _ => {}
+                    },
+                }
             }
         }
     }
 }
 
+fn get_tier(features: Vec<String>) -> i8 {
+    let mut tiers: Vec<u8> = vec![0];
+
+    for feature in features {
+        let temp_f: &str = &feature;
+        match temp_f {
+            "subscriber" => tiers.push(1),
+            "flair3" => tiers.push(2),
+            "flair1" => tiers.push(3),
+            "flair8" => tiers.push(4),
+            _ => (),
+        }
+    }
+    *tiers.iter().max().unwrap() as i8
+}
+
+// impl Color {
+//     fn from_tier(tier: i8) {}
+// }
+
+fn format_message(msg: ParsedMessage) -> Spans<'static> {
+    Spans::from(vec![
+        Span::styled(
+            format!("<{}> ", msg.nick),
+            Style::default()
+                .fg(Color::Blue)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(msg.data, Style::default().fg(Color::White)),
+    ])
+}
 fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -369,17 +377,17 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         }
     }
 
-    let messages: Vec<ListItem> = app
-        .messages
-        .iter()
-        .enumerate()
-        .map(|(i, m)| {
-            let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
-            ListItem::new(content)
-        })
-        .collect();
-    let messages =
-        List::new(messages).block(Block::default().borders(Borders::ALL).title("Messages"));
+    // let messages: Vec<ListItem> = app
+    //     .messages
+    //     .iter()
+    //     .enumerate()
+    //     .map(|(i, m)| {
+    //         let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
+    //         ListItem::new(content)
+    //     })
+    //     .collect();
+    // let messages =
+    //     List::new(messages).block(Block::default().borders(Borders::ALL).title("Messages"));
 
     let items: Vec<ListItem> = app
         .items
@@ -393,10 +401,11 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             //         Style::default().add_modifier(Modifier::ITALIC),
             //     )));
             // }
-            lines.push(Spans::from(vec![
-                Span::styled("hello", Style::default().fg(Color::Blue)),
-                Span::styled(" world", Style::default().fg(Color::Red)),
-            ]));
+
+            let parsed_output: JSON_Result<ParsedMessage>;
+            parsed_output = parse_message(&i.0.as_str()[4..]);
+            let formattedMessage: Spans = format_message(parsed_output.unwrap());
+            lines.push(formattedMessage);
             ListItem::new(lines).style(Style::default().fg(Color::White).bg(Color::Black))
         })
         .collect();
