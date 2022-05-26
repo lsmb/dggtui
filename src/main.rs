@@ -10,7 +10,7 @@
 ///   * Pressing Enter pushes the current input in the history of previous
 ///   messages
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEvent},
     execute,
     terminal::{
         self, disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -168,13 +168,13 @@ async fn main() -> Result<()> {
         })
     });
 
-    // tokio::spawn(async move {
-    //     run_emotes(erx).await.unwrap_or_else(|e| {
-    //         eprintln!("{}", e);
-    //     })
-    // });
+    tokio::spawn(async move {
+        run_emotes(erx).await.unwrap_or_else(|e| {
+            eprintln!("{}", e);
+        })
+    });
 
-    let tick_rate = Duration::from_millis(250);
+    let tick_rate = Duration::from_millis(50);
     // create app and run it
     let app = App::default();
     let res = run_app(&mut terminal, app, rx, etx, tick_rate);
@@ -195,25 +195,90 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn get_emotenames() -> Vec<String> {
+    let paths = fs::read_dir("./src/emotes/").unwrap();
+    let mut names: Vec<String> = vec![];
+    for path in paths {
+        let pathstr: String = path
+            .unwrap()
+            .path()
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        names.push(format!("{}", &pathstr[0..pathstr.len() - 4],));
+    }
+
+    names
+}
+
+fn print_emote(voffset: u16, xoffset: u16, emote_name: &str) {
+    let conf = Config {
+        width: Some(0),
+        height: Some(0),
+        absolute_offset: true,
+        ..Default::default()
+    };
+
+    viuer::print_from_file(
+        format!("./src/emotes_resized/{}.png", emote_name),
+        &Config {
+            y: 2 + voffset as i16,
+            x: xoffset + 2,
+            ..conf
+        },
+    )
+    .expect("Imge printing failed.");
+}
+
 async fn run_emotes(mut erx: tokio::sync::watch::Receiver<EmoteData>) -> Result<()> {
     // for i in 0..messages.len() {
     while erx.changed().await.is_ok() {
         let res = &*erx.borrow();
         // println!("Hei: {}", res.term_size);
-        let mut rng = rand::thread_rng();
-        let conf = Config {
-            width: Some(0),
-            height: Some(0),
-            y: 1,
-            x: rng.gen_range(10..40),
-            absolute_offset: true,
-            ..Default::default()
+
+        // println!("Pos: {}", res.message_pos);
+
+        let max: isize = res.term_size as isize - 9;
+
+        let floor = |_: usize| -> usize {
+            if res.message_pos as isize - max <= 0 {
+                0
+            } else {
+                (res.message_pos as isize - max) as usize
+            }
         };
 
-        viuer::print_from_file("./src/emotes/GIGACHAD.png", &conf).expect("Imge printing failed.");
+        print!("\x1b_Ga=d;\x1b\\");
+
+        for (i, message) in res.messages[floor(0)..res.message_pos + 1]
+            .iter()
+            .enumerate()
+        {
+            let emote_names: Vec<String> = get_emotenames();
+            let mut emote_pos: Vec<(usize, &str)> = vec![];
+
+            let parsed_output: JSON_Result<ParsedMessage>;
+            parsed_output = parse_message(&message.0.as_str()[4..]);
+            let msg: ParsedMessage = parsed_output.unwrap();
+
+            for name in emote_names {
+                let mut pos: Vec<_> = msg
+                    .data
+                    .match_indices(&format!("{}", &name).to_string())
+                    .collect();
+                emote_pos.append(&mut pos);
+            }
+
+            if emote_pos.len() > 0 {
+                for pos in emote_pos.to_owned() {
+                    print_emote(i as u16, pos.0 as u16 + msg.nick.len() as u16 + 3, pos.1)
+                }
+            }
+        }
     }
 
-    // }
     Ok(())
 }
 
@@ -297,9 +362,6 @@ fn run_app<B: Backend>(
                     InputMode::Editing => app.message_list.bottom(),
                 }
 
-                let spot: i16 = app.message_list.messages.len() as i16;
-
-                //emote memes
                 let term_height: u16 = terminal.size().unwrap().height;
                 etx.send(EmoteData {
                     term_size: term_height,
@@ -313,6 +375,15 @@ fn run_app<B: Backend>(
         terminal.draw(|f| ui(f, &mut app))?;
 
         if crossterm::event::poll(tick_rate).unwrap() {
+            // if let Event::Mouse(event) = event::read()? {
+            //     match event.kind {
+            //         event::MouseEventKind::Drag(event::MouseButton::Left) => {
+            //             // println!("{}", event.row)
+            //         }
+            //         _ => (),
+            //     }
+            // }
+
             if let Event::Key(key) = event::read()? {
                 match app.input_mode {
                     InputMode::Normal => match key.code {
@@ -322,8 +393,27 @@ fn run_app<B: Backend>(
                         KeyCode::Char('q') => {
                             return Ok(());
                         }
-                        KeyCode::Char('g') => app.message_list.bottom(),
-                        KeyCode::Down => app.message_list.next(),
+                        KeyCode::Char('c') => print!("\x1b_Gi=31,a=d;\x1b\\"),
+                        KeyCode::Char('r') => {
+                            print!("hello");
+                            terminal.clear()?;
+                        }
+                        KeyCode::Char('g') => {
+                            app.message_list.bottom();
+                            etx.send(EmoteData {
+                                term_size: terminal.size().unwrap().height,
+                                messages: app.message_list.messages.clone(),
+                                message_pos: app.message_list.state.selected().unwrap(),
+                            });
+                        }
+                        KeyCode::Down => {
+                            app.message_list.next();
+                            etx.send(EmoteData {
+                                term_size: terminal.size().unwrap().height,
+                                messages: app.message_list.messages.clone(),
+                                message_pos: app.message_list.state.selected().unwrap(),
+                            });
+                        }
                         KeyCode::Up => app.message_list.previous(),
                         KeyCode::Left => app.message_list.unselect(),
                         _ => {}
