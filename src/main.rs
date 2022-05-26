@@ -12,13 +12,17 @@
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        self, disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    },
 };
 use std::{
     error::Error,
     io,
     time::{Duration, Instant},
 };
+
+use std::io::Write;
 // use termion::{clear, color, cursor, cursor::DetectCursorPos, raw::IntoRawMode, style};
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -29,17 +33,26 @@ use tui::{
     Frame, Terminal,
 };
 
+use image as imageutil;
+use image::GenericImageView;
+use imageutil::DynamicImage;
+use std::fs;
+use std::path::{Path, PathBuf};
+use viuer::Config;
+
 use unicode_width::UnicodeWidthStr;
 
-use futures::sink::SinkExt;
 use futures::stream::StreamExt;
+use futures::{sink::SinkExt, TryFutureExt};
 use websocket_lite::{Message, Opcode, Result};
 
-use tokio::sync::mpsc;
 use tokio::sync::watch;
+use tokio::{fs::write, sync::mpsc};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Result as JSON_Result;
+
+use rand::Rng;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ParsedMessage {
@@ -142,9 +155,12 @@ async fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // let (tx, mut rx) = watch::channel("hello");
-    // let (tx, mut rx) = mpsc::channel();
     let (mut tx, rx) = watch::channel("".to_string());
+    let (etx, mut erx) = watch::channel(EmoteData {
+        term_size: 0,
+        messages: vec![],
+        message_pos: 0,
+    });
 
     tokio::spawn(async move {
         run_ws(tx).await.unwrap_or_else(|e| {
@@ -152,10 +168,16 @@ async fn main() -> Result<()> {
         })
     });
 
+    // tokio::spawn(async move {
+    //     run_emotes(erx).await.unwrap_or_else(|e| {
+    //         eprintln!("{}", e);
+    //     })
+    // });
+
     let tick_rate = Duration::from_millis(250);
     // create app and run it
     let app = App::default();
-    let res = run_app(&mut terminal, app, rx, tick_rate);
+    let res = run_app(&mut terminal, app, rx, etx, tick_rate);
 
     // restore terminal
     disable_raw_mode()?;
@@ -170,6 +192,28 @@ async fn main() -> Result<()> {
         println!("{:?}", err)
     }
 
+    Ok(())
+}
+
+async fn run_emotes(mut erx: tokio::sync::watch::Receiver<EmoteData>) -> Result<()> {
+    // for i in 0..messages.len() {
+    while erx.changed().await.is_ok() {
+        let res = &*erx.borrow();
+        // println!("Hei: {}", res.term_size);
+        let mut rng = rand::thread_rng();
+        let conf = Config {
+            width: Some(0),
+            height: Some(0),
+            y: 1,
+            x: rng.gen_range(10..40),
+            absolute_offset: true,
+            ..Default::default()
+        };
+
+        viuer::print_from_file("./src/emotes/GIGACHAD.png", &conf).expect("Imge printing failed.");
+    }
+
+    // }
     Ok(())
 }
 
@@ -216,6 +260,12 @@ async fn run_ws(tx: tokio::sync::watch::Sender<String>) -> Result<()> {
     Ok(())
 }
 
+struct EmoteData {
+    term_size: u16,
+    messages: Vec<(String, usize)>,
+    message_pos: usize,
+}
+
 fn parse_message(msg: &str) -> JSON_Result<ParsedMessage> {
     let json: ParsedMessage = serde_json::from_str(msg)?;
     return Ok(json);
@@ -225,6 +275,7 @@ fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
     mut app: App,
     mut rx: tokio::sync::watch::Receiver<String>,
+    etx: tokio::sync::watch::Sender<EmoteData>,
     tick_rate: Duration,
 ) -> io::Result<()> {
     let mut last_tick = Instant::now();
@@ -239,11 +290,24 @@ fn run_app<B: Backend>(
             if msg.starts_with("MSG ") {
                 // let parsed_output: JSON_Result<ParsedMessage>;
                 // parsed_output = parse_message(&msg[4..]);
-                app.message_list.messages.push((msg.to_owned(), 1));
+                let hi: String = msg.to_string();
+                app.message_list.messages.push((hi.to_owned(), 1));
                 match app.input_mode {
                     InputMode::Normal => app.message_list.bottom(),
                     InputMode::Editing => app.message_list.bottom(),
                 }
+
+                let spot: i16 = app.message_list.messages.len() as i16;
+
+                //emote memes
+                let term_height: u16 = terminal.size().unwrap().height;
+                etx.send(EmoteData {
+                    term_size: term_height,
+                    messages: app.message_list.messages.clone(),
+                    message_pos: app.message_list.state.selected().unwrap(),
+                });
+
+                // print!("\x1b_Gi=31,a=d;\x1b\\")
             }
         }
         terminal.draw(|f| ui(f, &mut app))?;
@@ -322,15 +386,18 @@ impl FromTier for Color {
 }
 
 fn format_message(msg: ParsedMessage, width: u16) -> Vec<Spans<'static>> {
-    let message: Vec<Spans> = vec![Spans::from(vec![
-        Span::styled(
-            format!("<{}> ", msg.nick),
-            Style::default()
-                .fg(Color::from_tier(get_tier(msg.features)))
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(msg.data, Style::default().fg(Color::White)),
-    ])];
+    let message: Vec<Spans> = vec![
+        Spans::from(vec![
+            Span::styled(
+                format!("<{}> ", msg.nick),
+                Style::default()
+                    .fg(Color::from_tier(get_tier(msg.features)))
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(msg.data, Style::default().fg(Color::White)),
+        ]),
+        /* Spans::from("") */
+    ];
 
     // println!("Message width: {}", message.width());
 
@@ -420,15 +487,12 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             for line in formatted_message {
                 lines.push(line)
             }
+
             ListItem::new(lines).style(Style::default().fg(Color::White).bg(Color::Black))
         })
         .collect();
 
     // Create a List from all list items and highlight the currently selected one
-
-    // match app.input_mode {
-    //     InputMode::Normal => ()
-    // }
 
     let messages = List::new(messages)
         .block(Block::default().borders(Borders::ALL).title("Messages"))
@@ -448,5 +512,6 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     // println!("{}", chunks[0].y);
     // f.render_widget(messages, chunks[2]);
+
     f.render_stateful_widget(messages, chunks[0], &mut app.message_list.state);
 }
