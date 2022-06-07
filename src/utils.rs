@@ -156,7 +156,7 @@ pub fn get_suggestions(
 
     if last_word.len() > 0 {
         let mut names: Vec<String> = Vec::new();
-        let mut emotes: Vec<String> = Vec::new();
+        let mut matching_emotes: Vec<String> = Vec::new();
 
         for user in users.users.to_owned() {
             if user
@@ -170,12 +170,12 @@ pub fn get_suggestions(
 
         for emote in emotes.to_owned() {
             if emote.to_lowercase().starts_with(&last_word.to_lowercase()) {
-                emotes.push(emote)
+                matching_emotes.push(emote)
             }
         }
 
         let mut suggestions_vec: Vec<String> = Vec::new();
-        suggestions_vec.append(&mut emotes);
+        suggestions_vec.append(&mut matching_emotes);
         suggestions_vec.append(&mut names);
         autocomplete.suggestions = suggestions_vec;
     } else {

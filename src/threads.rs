@@ -240,6 +240,8 @@ pub fn run_app<B: Backend>(
 ) -> Result<()> {
     let mut last_tick = Instant::now();
 
+    app.emotes = utils::get_emotenames();
+
     loop {
         if last_tick.elapsed() >= tick_rate {
             // app.on_tick();
@@ -341,6 +343,7 @@ pub fn run_app<B: Backend>(
                             );
 
                             app.autocomplete = autocomplete;
+                            app.autocomplete.unselect();
                         }
                         KeyCode::Backspace => {
                             app.input.pop();
@@ -357,9 +360,34 @@ pub fn run_app<B: Backend>(
                             app.input_mode = InputMode::Normal;
                         }
                         KeyCode::Tab => {
-                            app.input.push_str("hello")
+                            app.autocomplete.tabbing = true;
+                            app.autocomplete.next();
+                            if let Some(state) = app.autocomplete.selected {
+                                let mut split_input: Vec<&str> = app.input.split(' ').collect();
+                                if split_input.len() > 0
+                                    && state < app.autocomplete.suggestions.len()
+                                {
+                                    split_input.pop();
+                                    split_input.push(&app.autocomplete.suggestions[state]);
+                                    app.input = split_input.join(" ")
+                                }
+                            }
                             // what man
                         }
+                        KeyCode::BackTab => {
+                            app.autocomplete.tabbing = true;
+                            app.autocomplete.previous();
+                            if let Some(state) = app.autocomplete.selected {
+                                let mut split_input: Vec<&str> = app.input.split(' ').collect();
+                                if split_input.len() > 0 {
+                                    split_input.pop();
+                                    split_input.push(&app.autocomplete.suggestions[state]);
+                                    app.input = split_input.join(" ")
+                                }
+                            }
+                            // what man
+                        }
+
                         _ => {}
                     },
                 }

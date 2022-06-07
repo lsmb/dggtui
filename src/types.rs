@@ -120,7 +120,7 @@ pub struct Autocomplete {
 impl Autocomplete {
     pub fn next(&mut self) {
         if let Some(selected) = self.selected {
-            if selected + 1 <= self.suggestions.len() {
+            if selected + 1 < self.suggestions.len() {
                 self.selected = Some(selected + 1)
             } else {
                 self.selected = Some(0)
