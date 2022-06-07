@@ -1,3 +1,4 @@
+use crate::utils;
 use serde::{Deserialize, Serialize};
 use tui::widgets::ListState;
 
@@ -9,6 +10,10 @@ pub struct App {
     pub input_mode: InputMode,
     /// History of recorded messages
     pub message_list: StatefulList<(String, usize)>,
+    pub show_suggestion: bool,
+    pub users: Users,
+    pub emotes: Vec<String>,
+    pub autocomplete: Autocomplete,
 }
 
 impl<'a> Default for App {
@@ -17,6 +22,10 @@ impl<'a> Default for App {
             input: String::new(),
             input_mode: InputMode::Normal,
             message_list: StatefulList::with_items(vec![]),
+            show_suggestion: false,
+            users: Users::from(Users::default()),
+            emotes: { utils::get_emotenames() },
+            autocomplete: Autocomplete::from(Autocomplete::default()),
         }
     }
 }
@@ -98,4 +107,56 @@ pub struct ParsedMessage {
     pub features: Vec<String>,
     pub timestamp: u64,
     pub data: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct Autocomplete {
+    pub last_word: String,
+    pub tabbing: bool,
+    pub suggestions: Vec<String>,
+    pub selected: Option<usize>,
+}
+
+impl Autocomplete {
+    pub fn next(&mut self) {
+        if let Some(selected) = self.selected {
+            if selected + 1 <= self.suggestions.len() {
+                self.selected = Some(selected + 1)
+            } else {
+                self.selected = Some(0)
+            }
+        } else {
+            if self.suggestions.len() > 0 {
+                self.selected = Some(0)
+            } else {
+                self.selected = None
+            }
+        }
+    }
+
+    pub fn previous(&mut self) {
+        if let Some(selected) = self.selected {
+            if selected > 0 {
+                self.selected = Some(selected - 1)
+            } else {
+                self.selected = Some(self.suggestions.len() - 1)
+            }
+        }
+    }
+
+    pub fn unselect(&mut self) {
+        self.selected = None;
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct User {
+    pub nick: String,
+    pub features: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct Users {
+    pub connectioncount: u16,
+    pub users: Vec<User>,
 }

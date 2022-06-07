@@ -49,24 +49,25 @@ async fn main() -> Result<()> {
     let (mtx, mrx) = watch::channel("".to_string());
 
     tokio::spawn(async move {
-        threads::run_ws(tx).await.unwrap_or_else(|e| {
+        threads::run_ws2(tx, mrx).await.unwrap_or_else(|e| {
             eprintln!("{}", e);
         })
     });
 
     // tokio::spawn(async move {
-    //     run_ws_sender(mrx).await.unwrap_or_else(|e| {
+    //     threads::run_ws_sender(mrx).await.unwrap_or_else(|e| {
     //         eprintln!("{}", e);
     //     })
     // });
 
-    tokio::spawn(async move {
-        threads::run_emotes(erx).await.unwrap_or_else(|e| {
-            eprintln!("{}", e);
-        })
-    });
+    // Emote thread
+    // tokio::spawn(async move {
+    //     threads::run_emotes(erx).await.unwrap_or_else(|e| {
+    //         eprintln!("{}", e);
+    //     })
+    // });
 
-    let tick_rate = Duration::from_millis(50);
+    let tick_rate = Duration::from_millis(0);
     // create app and run it
     let app = types::App::default();
     let res = threads::run_app(&mut terminal, app, rx, etx, mtx, tick_rate);

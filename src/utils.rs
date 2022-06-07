@@ -1,10 +1,11 @@
 use std::fs;
 
-use crate::types::ParsedMessage;
+use crate::types::{App, Autocomplete, ParsedMessage, Users};
 use serde_json::Result as JSON_Result;
 use std::borrow::Cow::{Borrowed, Owned};
+use textwrap::Options;
 use tui::{
-    style::{Color, Modifier, Style},
+    style::{self, Color, Modifier, Style},
     text::{Span, Spans},
 };
 
@@ -33,6 +34,11 @@ pub fn parse_message(msg: &str) -> JSON_Result<ParsedMessage> {
     return Ok(json);
 }
 
+pub fn parse_users(msg: &str) -> JSON_Result<Users> {
+    let json: Users = serde_json::from_str(msg)?;
+    return Ok(json);
+}
+
 pub fn print_emote(voffset: u16, xoffset: u16, emote_name: &str) {
     let conf = Config {
         width: Some(0),
@@ -53,13 +59,15 @@ pub fn print_emote(voffset: u16, xoffset: u16, emote_name: &str) {
 }
 
 pub fn format_message(msg: ParsedMessage, width: u16) -> Vec<Spans<'static>> {
-    let lines: Vec<String> = wrap_message(&msg, width - 4 - msg.nick.len() as u16).to_vec();
+    let lines: Vec<String> = wrap_message(&msg, width - 5 - msg.nick.len() as u16).to_vec();
 
     let mut message_lines: Vec<Spans> = Vec::new();
 
     for (i, line) in lines.iter().enumerate() {
+        let mut words: Vec<Span> = Vec::new();
+
         if i == 0 {
-            message_lines.push(Spans::from(vec![
+            words.push(
                 Span::styled(
                     format!("<{}> ", msg.nick),
                     Style::default()
@@ -67,14 +75,24 @@ pub fn format_message(msg: ParsedMessage, width: u16) -> Vec<Spans<'static>> {
                         .add_modifier(Modifier::BOLD),
                 )
                 .to_owned(),
-                Span::styled(line.to_owned(), Style::default().fg(Color::White)),
-            ]))
-        } else {
-            message_lines.push(Spans::from(vec![Span::styled(
-                line.to_owned(),
-                Style::default().fg(Color::White),
-            )]))
+            )
         }
+
+        for word in line.split(" ") {
+            let mut word_style: Style = Style::default();
+            if word.contains("http") {
+                word_style = word_style.add_modifier(Modifier::UNDERLINED);
+                if msg.data.to_lowercase().contains("nsfl") {
+                    word_style = word_style.fg(Color::Yellow)
+                } else if msg.data.to_lowercase().contains("nsfw") {
+                    word_style = word_style.fg(Color::Red)
+                }
+            }
+            words.push(Span::styled(word.to_owned(), word_style));
+            words.push(Span::styled(" ", Style::default()))
+        }
+
+        message_lines.push(Spans::from(words))
     }
 
     message_lines
@@ -82,7 +100,12 @@ pub fn format_message(msg: ParsedMessage, width: u16) -> Vec<Spans<'static>> {
 
 pub fn wrap_message(msg: &ParsedMessage, width: u16) -> Vec<String> {
     let cloned_msg: String = msg.data.to_owned();
-    let cow_lines = textwrap::wrap(&cloned_msg, width as usize);
+
+    let wrap_options = Options::new(width as usize)
+        .break_words(false)
+        .word_splitter(textwrap::WordSplitter::NoHyphenation)
+        .word_separator(textwrap::WordSeparator::AsciiSpace);
+    let cow_lines = textwrap::wrap(&cloned_msg, wrap_options);
 
     let lines = cow_lines
         .iter()
@@ -93,6 +116,12 @@ pub fn wrap_message(msg: &ParsedMessage, width: u16) -> Vec<String> {
         .collect::<Vec<String>>();
 
     lines
+}
+
+pub fn get_users(names: String) -> Users {
+    let users_plain: JSON_Result<Users> = parse_users(&names[5..]);
+    let users: Users = users_plain.unwrap();
+    users
 }
 
 pub fn get_tier(features: Vec<String>) -> i8 {
@@ -110,6 +139,50 @@ pub fn get_tier(features: Vec<String>) -> i8 {
         }
     }
     *tiers.iter().max().unwrap() as i8
+}
+
+pub fn get_suggestions(
+    input: String,
+    mut autocomplete: Autocomplete,
+    users: Users,
+    emotes: Vec<String>,
+) -> Autocomplete {
+    let mut last_word: String = String::new();
+
+    match input.split(' ').last() {
+        Some(input_last) => last_word = input_last.to_string(),
+        None => last_word = "".to_string(),
+    }
+
+    if last_word.len() > 0 {
+        let mut names: Vec<String> = Vec::new();
+        let mut emotes: Vec<String> = Vec::new();
+
+        for user in users.users.to_owned() {
+            if user
+                .nick
+                .to_lowercase()
+                .starts_with(&last_word.to_lowercase())
+            {
+                names.push(user.nick)
+            }
+        }
+
+        for emote in emotes.to_owned() {
+            if emote.to_lowercase().starts_with(&last_word.to_lowercase()) {
+                emotes.push(emote)
+            }
+        }
+
+        let mut suggestions_vec: Vec<String> = Vec::new();
+        suggestions_vec.append(&mut emotes);
+        suggestions_vec.append(&mut names);
+        autocomplete.suggestions = suggestions_vec;
+    } else {
+        autocomplete.suggestions = Vec::new();
+    }
+    autocomplete.last_word = last_word;
+    autocomplete
 }
 
 trait FromTier {

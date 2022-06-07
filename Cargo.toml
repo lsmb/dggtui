@@ -19,7 +19,13 @@ image = "*"
 
 serde_json = "1.0"
 
-tokio = { version = "1.18.2", features = ["full"] }
+tokio = { version = "1.18.2", features = [
+  "macros",
+  "time",
+  "io-std",
+  "rt-multi-thread",
+] }
+# tokio = { version = "1.18.2", features = ["full"] }
 websocket-lite = "0.5.1"
 tokio-util = { version = ">=0.6", features = ["codec"] }
 base64 = "0.13"
@@ -32,3 +38,8 @@ tokio-openssl = { version = "0.6", optional = true }
 tokio-native-tls = { version = "0.3", optional = true }
 url = "2"
 websocket-codec = { version = "0.5" }
+
+[features]
+default = ["ssl-native-tls"]
+ssl-native-tls = ["native-tls", "tokio-native-tls"]
+ssl-openssl = ["openssl", "tokio-openssl"]

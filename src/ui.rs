@@ -1,9 +1,9 @@
 use tui::{
     backend::Backend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans, Text},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
     Frame,
 };
 
@@ -16,7 +16,7 @@ use crate::JSON_Result;
 pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .margin(1)
+        .margin(0)
         .constraints(
             [
                 Constraint::Min(1),
@@ -34,7 +34,7 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                 Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to exit, "),
                 Span::styled("e", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to start editing."),
+                Span::raw(" to start typing."),
             ],
             Style::default().add_modifier(Modifier::RAPID_BLINK),
         ),
@@ -42,9 +42,9 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             vec![
                 Span::raw("Press "),
                 Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to stop editing, "),
+                Span::raw(" to stop typing, "),
                 Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to record the message"),
+                Span::raw(" to send the message"),
             ],
             Style::default(),
         ),
@@ -59,7 +59,7 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             InputMode::Normal => Style::default(),
             InputMode::Editing => Style::default().fg(Color::Yellow),
         })
-        .block(Block::default().borders(Borders::ALL).title("Input"));
+        .block(Block::default().borders(Borders::ALL));
     f.render_widget(input, chunks[1]);
     match app.input_mode {
         InputMode::Normal =>
@@ -86,13 +86,28 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
             let parsed_output: JSON_Result<ParsedMessage>;
             parsed_output = parse_message(&i.0.as_str()[4..]);
-            let formatted_message: Vec<Spans> =
-                format_message(parsed_output.unwrap(), chunks[0].width);
+            let parsed_message = parsed_output.unwrap();
+
+            let mut list_style: Style = Style::default();
+
+            if parsed_message.nick == "Keah" {
+                list_style = list_style.bg(Color::Rgb(25, 25, 25))
+            }
+
+            if parsed_message.data.to_lowercase().contains("keah") && parsed_message.nick != "Keah"
+            {
+                list_style = list_style.fg(Color::Blue).add_modifier(Modifier::BOLD)
+            }
+            if parsed_message.data.starts_with(">") {
+                list_style = list_style.fg(Color::LightGreen)
+            }
+
+            let formatted_message: Vec<Spans> = format_message(parsed_message, chunks[0].width);
             for line in formatted_message {
                 lines.push(line)
             }
 
-            ListItem::new(lines).style(Style::default().fg(Color::White).bg(Color::Black))
+            ListItem::new(lines).style(list_style)
         })
         .collect();
 
@@ -109,4 +124,47 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         });
 
     f.render_stateful_widget(messages, chunks[0], &mut app.message_list.state);
+    if app.input.len() > 0 {
+        let area = suggestion_rect(f.size());
+        let block = Block::default()/* .borders(Borders::ALL) */;
+
+        if app.autocomplete.suggestions.len() > 0 {
+            let suggestions = Paragraph::new(app.autocomplete.suggestions.join(" ").to_string())
+                .style(Style::default().fg(Color::Blue))
+                .block(block);
+
+            f.render_widget(Clear, area); //this clears out the background
+            f.render_widget(suggestions, area);
+        }
+    }
+}
+
+fn get_suggestions() -> Option<String> {
+    None
+}
+
+fn suggestion_rect(r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Length(r.height - 6),
+                Constraint::Length(1),
+                Constraint::Length(20),
+            ]
+            .as_ref(),
+        )
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Length(2),
+                Constraint::Percentage(80),
+                Constraint::Percentage(60),
+            ]
+            .as_ref(),
+        )
+        .split(popup_layout[1])[1]
 }

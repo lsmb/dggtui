@@ -1,3 +1,4 @@
+use futures::future::{self, FutureExt};
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use websocket_lite::{Message, Opcode, Result};
@@ -5,7 +6,7 @@ use websocket_lite::{Message, Opcode, Result};
 // use serde::{Deserialize, Serialize};
 use serde_json::Result as JSON_Result;
 
-use crate::types;
+use crate::types::{self, Autocomplete};
 use crate::ui::ui;
 use crate::utils;
 use types::{App, EmoteData, InputMode, ParsedMessage};
@@ -19,7 +20,95 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub async fn run_ws(tx: tokio::sync::watch::Sender<String>) -> Result<()> {
+pub async fn run_ws2(
+    tx: tokio::sync::watch::Sender<String>,
+    mut mrx: tokio::sync::watch::Receiver<String>,
+) -> Result<()> {
+    loop {
+        let url = "wss://chat.destiny.gg/ws".to_owned();
+        let mut builder = websocket_lite::ClientBuilder::new(&url)?;
+        builder.add_header(
+            "Cookie".to_string(),
+            "authtoken=7uooLJ8yxtTmCBnjaloirWpXXpbRNgOWJ0ZJLsyvjX8xoTavppOf7OdL1hbCtfVm"
+                .to_string(),
+        );
+        let client = builder.async_connect().await?;
+        let (sink, stream) = client.split();
+
+        let send_loop = async {
+            let mut sink = sink;
+            let mut message: String = String::new();
+
+            while message != "/quit" {
+                if mrx.changed().await.is_ok() {
+                    let ch_message = &*mrx.borrow();
+                    message = ch_message.to_string();
+                }
+
+                let message_data = Message::new(
+                    Opcode::Text,
+                    format!("MSG {{ \"data\": \"{}\" }}", &message),
+                )?;
+                sink.send(message_data).await?;
+            }
+
+            Ok(())
+        };
+
+        let recv_loop = async {
+            let mut stream_mut = stream;
+
+            loop {
+                let (msg, stream) = stream_mut.into_future().await;
+
+                let msg = if let Some(msg) = msg {
+                    msg?
+                } else {
+                    stream_mut = stream;
+                    break;
+                };
+
+                if let Opcode::Text = msg.opcode() {
+                    if let Some(text) = msg.as_text() {
+                        let msg_text: String = text.to_string();
+                        if msg_text.contains("/quit") {
+                            break;
+                        }
+                        let res = tx.send(msg_text);
+                    }
+                }
+
+                // if let Opcode::Text | Opcode::Binary = message.opcode() {
+                //     if let Some(s) = message.as_text() {
+                //         println!("{}", s);
+                //     } else {
+                //         let stdout = io::stdout();
+                //         let mut stdout = stdout.lock();
+                //     }
+                // }
+
+                stream_mut = stream;
+            }
+
+            Ok(()) as Result<()>
+        };
+
+        let result = future::select(send_loop.boxed(), recv_loop.boxed())
+            .await
+            .into_inner()
+            .0;
+
+        if "nein" == "no" {
+            break;
+        }
+    }
+    Ok(())
+}
+
+pub async fn run_ws(
+    tx: tokio::sync::watch::Sender<String>,
+    mut mrx: tokio::sync::watch::Receiver<String>,
+) -> Result<()> {
     let url = "wss://chat.destiny.gg/ws".to_owned();
     let mut builder = websocket_lite::ClientBuilder::new(&url)?;
 
@@ -31,36 +120,64 @@ pub async fn run_ws(tx: tokio::sync::watch::Sender<String>) -> Result<()> {
     let mut ws_stream = builder.async_connect().await?;
 
     loop {
-        let msg: Option<Result<Message>> = ws_stream.next().await;
+        let mut message: String = String::new();
+        let mut changed: bool = false;
 
-        let msg = if let Some(msg) = msg {
-            msg
-        } else {
-            break;
-        };
+        if mrx.has_changed().unwrap() {
+            let channel_message = &*mrx.borrow_and_update();
 
-        let msg = if let Ok(msg) = msg {
-            msg
-        } else {
-            let _ = ws_stream.send(Message::close(None)).await;
-            break;
-        };
-
-        match msg.opcode() {
-            Opcode::Text => {
-                // println!("{}", msg.as_text().unwrap());
-
-                // ws_stream.send(msg).await?
-                let msg: String = msg.as_text().unwrap().to_string();
-                tx.send(msg)?;
-            }
-            Opcode::Binary => ws_stream.send(msg).await?,
-            Opcode::Ping => ws_stream.send(Message::pong(msg.into_data())).await?,
-            Opcode::Close => {
-                let _ = ws_stream.send(Message::close(None)).await;
+            if channel_message.to_string() == "quit".to_string() {
                 break;
             }
-            Opcode::Pong => {}
+
+            message = channel_message.to_string();
+            // message_to_send = msg.to_string();
+            changed = true;
+        }
+
+        if changed == true {
+            ws_stream
+                .send(Message::text(format!(
+                    "MSG {{ \"data\": \"{}\" }}",
+                    &message
+                )))
+                .await?;
+            // ws_stream.send(message);
+            // println!("Hello test: {}", message);
+            ws_stream.next().await;
+            changed = false;
+        } else {
+            let msg: Option<Result<Message>> = ws_stream.next().await;
+
+            let msg = if let Some(msg) = msg {
+                msg
+            } else {
+                break;
+            };
+
+            let msg = if let Ok(msg) = msg {
+                msg
+            } else {
+                let _ = ws_stream.send(Message::close(None)).await;
+                break;
+            };
+
+            match msg.opcode() {
+                Opcode::Text => {
+                    // println!("{}", msg.as_text().unwrap());
+
+                    // ws_stream.send(msg).await?
+                    let msg: String = msg.as_text().unwrap().to_string();
+                    tx.send(msg)?;
+                }
+                Opcode::Binary => ws_stream.send(msg).await?,
+                Opcode::Ping => ws_stream.send(Message::pong(msg.into_data())).await?,
+                Opcode::Close => {
+                    let _ = ws_stream.send(Message::close(None)).await;
+                    break;
+                }
+                Opcode::Pong => {}
+            }
         }
     }
 
@@ -120,35 +237,43 @@ pub fn run_app<B: Backend>(
     etx: tokio::sync::watch::Sender<EmoteData>,
     mtx: tokio::sync::watch::Sender<String>,
     tick_rate: Duration,
-) -> io::Result<()> {
+) -> Result<()> {
     let mut last_tick = Instant::now();
+
     loop {
         if last_tick.elapsed() >= tick_rate {
             // app.on_tick();
             last_tick = Instant::now();
         }
 
-        if rx.has_changed().unwrap() {
-            let msg = &*rx.borrow_and_update();
-            if msg.starts_with("MSG ") {
-                let hi: String = msg.to_string();
-                app.message_list.messages.push((hi.to_owned(), 1));
-                match app.input_mode {
-                    InputMode::Normal => app.message_list.bottom(),
-                    InputMode::Editing => app.message_list.bottom(),
+        let rx_res = match rx.has_changed() {
+            Ok(rx_res) => {
+                if rx_res {
+                    let msg = &*rx.borrow_and_update();
+                    if msg.starts_with("MSG ") {
+                        let hi: String = msg.to_string();
+                        app.message_list.messages.push((hi.to_owned(), 1));
+                        match app.input_mode {
+                            InputMode::Normal => app.message_list.bottom(),
+                            InputMode::Editing => app.message_list.bottom(),
+                        }
+
+                        let term_height: u16 = terminal.size().unwrap().height;
+                        etx.send(EmoteData {
+                            term_size: term_height,
+                            messages: app.message_list.messages.clone(),
+                            message_pos: app.message_list.state.selected().unwrap(),
+                        })
+                        .expect("Error sending EmoteData to etx");
+
+                        // print!("\x1b_Gi=31,a=d;\x1b\\")
+                    } else if msg.starts_with("NAMES ") {
+                        app.users = utils::get_users(msg.to_string())
+                    }
                 }
-
-                let term_height: u16 = terminal.size().unwrap().height;
-                etx.send(EmoteData {
-                    term_size: term_height,
-                    messages: app.message_list.messages.clone(),
-                    message_pos: app.message_list.state.selected().unwrap(),
-                })
-                .expect("Error sending EmoteData to etx");
-
-                // print!("\x1b_Gi=31,a=d;\x1b\\")
             }
-        }
+            Err(e) => {}
+        };
 
         terminal.draw(|f| ui(f, &mut app))?;
 
@@ -201,17 +326,39 @@ pub fn run_app<B: Backend>(
                     InputMode::Editing => match key.code {
                         KeyCode::Enter => {
                             let message: String = app.input.drain(..).collect();
-                            mtx.send(message).expect("Error sending message to mtx");
+                            // println!("Message: {}", message);
+                            mtx.send(message.to_string());
                             // app.message_list.messages.push((message.to_owned(), 1));
                         }
                         KeyCode::Char(c) => {
                             app.input.push(c);
+                            // app.autocomplete.last_word = app.input.split(' ').last();
+                            let autocomplete: Autocomplete = utils::get_suggestions(
+                                app.input.to_owned(),
+                                app.autocomplete.to_owned(),
+                                app.users.to_owned(),
+                                app.emotes.to_owned(),
+                            );
+
+                            app.autocomplete = autocomplete;
                         }
                         KeyCode::Backspace => {
                             app.input.pop();
+                            let autocomplete: Autocomplete = utils::get_suggestions(
+                                app.input.to_owned(),
+                                app.autocomplete.to_owned(),
+                                app.users.to_owned(),
+                                app.emotes.to_owned(),
+                            );
+
+                            app.autocomplete = autocomplete;
                         }
                         KeyCode::Esc => {
                             app.input_mode = InputMode::Normal;
+                        }
+                        KeyCode::Tab => {
+                            app.input.push_str("hello")
+                            // what man
                         }
                         _ => {}
                     },
