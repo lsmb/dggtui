@@ -61,11 +61,11 @@ async fn main() -> Result<()> {
     // });
 
     // Emote thread
-    // tokio::spawn(async move {
-    //     threads::run_emotes(erx).await.unwrap_or_else(|e| {
-    //         eprintln!("{}", e);
-    //     })
-    // });
+    tokio::spawn(async move {
+        threads::run_emotes(erx).await.unwrap_or_else(|e| {
+            eprintln!("{}", e);
+        })
+    });
 
     let tick_rate = Duration::from_millis(0);
     // create app and run it

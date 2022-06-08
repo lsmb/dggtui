@@ -12,7 +12,7 @@ use tui::{
 use viuer::Config;
 
 pub fn get_emotenames() -> Vec<String> {
-    let paths = fs::read_dir("./src/emotes/").unwrap();
+    let paths = fs::read_dir("./src/emotes_resized/").unwrap();
     let mut names: Vec<String> = vec![];
     for path in paths {
         let pathstr: String = path

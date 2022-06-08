@@ -198,7 +198,7 @@ pub async fn run_emotes(mut erx: tokio::sync::watch::Receiver<EmoteData>) -> Res
             }
         };
 
-        print!("\x1b_Ga=d;\x1b\\");
+        let mut final_emotes: Vec<(u16, u16, String)> = Vec::new();
 
         for (i, message) in res.messages[floor(0)..res.message_pos + 1]
             .iter()
@@ -221,8 +221,20 @@ pub async fn run_emotes(mut erx: tokio::sync::watch::Receiver<EmoteData>) -> Res
 
             if emote_pos.len() > 0 {
                 for pos in emote_pos.to_owned() {
-                    utils::print_emote(i as u16, pos.0 as u16 + msg.nick.len() as u16 + 3, pos.1)
+                    // utils::print_emote(i as u16, pos.0 as u16 + msg.nick.len() as u16 + 3, pos.1);
+                    final_emotes.push((
+                        i as u16,
+                        pos.0 as u16 + msg.nick.len() as u16 + 3,
+                        pos.1.to_string(),
+                    ));
                 }
+            }
+        }
+
+        print!("\x1b_Ga=d;\x1b\\");
+        if final_emotes.len() > 0 {
+            for pos in final_emotes.to_owned() {
+                utils::print_emote(pos.0, pos.1, &pos.2);
             }
         }
     }
@@ -333,6 +345,10 @@ pub fn run_app<B: Backend>(
                             // app.message_list.messages.push((message.to_owned(), 1));
                         }
                         KeyCode::Char(c) => {
+                            if app.autocomplete.tabbing == true {
+                                app.input.push(' ');
+                                app.autocomplete.tabbing = false
+                            }
                             app.input.push(c);
                             // app.autocomplete.last_word = app.input.split(' ').last();
                             let autocomplete: Autocomplete = utils::get_suggestions(
