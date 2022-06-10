@@ -52,7 +52,6 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let mut text = Text::from(Spans::from(msg));
     text.patch_style(style);
     let help_message = Paragraph::new(text);
-    f.render_widget(help_message, chunks[2]);
 
     let input = Paragraph::new(app.input.as_ref())
         .style(match app.input_mode {
@@ -60,7 +59,6 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             InputMode::Editing => Style::default().fg(Color::Yellow),
         })
         .block(Block::default().borders(Borders::ALL));
-    f.render_widget(input, chunks[1]);
     match app.input_mode {
         InputMode::Normal =>
             // Hide the cursor. `Frame` does this by default, so we don't need to do anything here
@@ -124,6 +122,9 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         });
 
     f.render_stateful_widget(messages, chunks[0], &mut app.message_list.state);
+    f.render_widget(help_message, chunks[2]);
+    f.render_widget(input, chunks[1]);
+
     if app.input.len() > 0 {
         let area = suggestion_rect(f.size());
         let block = Block::default()/* .borders(Borders::ALL) */;

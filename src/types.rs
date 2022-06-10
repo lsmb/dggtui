@@ -109,6 +109,11 @@ pub struct ParsedMessage {
     pub data: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub enum HistoryJSON {
+    String(String),
+}
+
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Autocomplete {
     pub last_word: String,

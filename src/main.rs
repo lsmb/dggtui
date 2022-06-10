@@ -69,7 +69,14 @@ async fn main() -> Result<()> {
 
     let tick_rate = Duration::from_millis(0);
     // create app and run it
-    let app = types::App::default();
+    let mut app = types::App::default();
+
+    // utils::emotes_remote().await?;
+    for msg in utils::get_history().await? {
+        app.message_list.messages.push((msg.to_owned(), 1));
+        // println!("{}", msg)
+    }
+
     let res = threads::run_app(&mut terminal, app, rx, etx, mtx, tick_rate);
 
     // restore terminal

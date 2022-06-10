@@ -14,17 +14,15 @@ unicode-width = "0.1"
 textwrap = "0.15"
 
 # Image stuff
+hyper = { version = "0.14", features = ["full"] }
+hyper-tls = "*"
+
 viuer = "0.5.3"
 image = "*"
 
 serde_json = "1.0"
 
-tokio = { version = "1.18.2", features = [
-  "macros",
-  "time",
-  "io-std",
-  "rt-multi-thread",
-] }
+tokio = { version = "1.18.2", features = ["full"] }
 # tokio = { version = "1.18.2", features = ["full"] }
 websocket-lite = "0.5.1"
 tokio-util = { version = ">=0.6", features = ["codec"] }

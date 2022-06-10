@@ -112,6 +112,9 @@ pub async fn run_ws(
     let url = "wss://chat.destiny.gg/ws".to_owned();
     let mut builder = websocket_lite::ClientBuilder::new(&url)?;
 
+    let history_url = "wss://chat.destiny.gg/ws/history".to_owned();
+    let mut builder = websocket_lite::ClientBuilder::new(&url)?;
+
     builder.add_header(
         "Cookie".to_string(),
         "authtoken=7uooLJ8yxtTmCBnjaloirWpXXpbRNgOWJ0ZJLsyvjX8xoTavppOf7OdL1hbCtfVm".to_string(),
@@ -231,7 +234,7 @@ pub async fn run_emotes(mut erx: tokio::sync::watch::Receiver<EmoteData>) -> Res
             }
         }
 
-        print!("\x1b_Ga=d;\x1b\\");
+        print!("\x1b_Ga=d\x1b\\");
         if final_emotes.len() > 0 {
             for pos in final_emotes.to_owned() {
                 utils::print_emote(pos.0, pos.1, &pos.2);
@@ -310,10 +313,11 @@ pub fn run_app<B: Backend>(
                         KeyCode::Char('q') => {
                             return Ok(());
                         }
-                        KeyCode::Char('c') => print!("\x1b_Gi=31,a=d;\x1b\\"),
+                        KeyCode::Char('c') => print!("\x1b_Ga=d\x1b\\"),
                         KeyCode::Char('r') => {
                             print!("hello");
                             terminal.clear()?;
+                            // println!(utils::emotes_remote)::emotes_remote();
                         }
                         KeyCode::Char('g') => {
                             app.message_list.bottom();
