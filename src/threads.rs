@@ -6,6 +6,8 @@ use websocket_lite::{Message, Opcode, Result};
 // use serde::{Deserialize, Serialize};
 use serde_json::Result as JSON_Result;
 
+use crate::config::Config;
+use crate::irender;
 use crate::types::{self, Autocomplete};
 use crate::ui::ui;
 use crate::utils;
@@ -23,15 +25,19 @@ use std::{
 pub async fn run_ws2(
     tx: tokio::sync::watch::Sender<String>,
     mut mrx: tokio::sync::watch::Receiver<String>,
+    config: Config,
 ) -> Result<()> {
     loop {
         let url = "wss://chat.destiny.gg/ws".to_owned();
         let mut builder = websocket_lite::ClientBuilder::new(&url)?;
-        builder.add_header(
-            "Cookie".to_string(),
-            "authtoken=7uooLJ8yxtTmCBnjaloirWpXXpbRNgOWJ0ZJLsyvjX8xoTavppOf7OdL1hbCtfVm"
-                .to_string(),
-        );
+
+        if let Some(token) = config.token.to_owned() {
+            builder.add_header(
+                "Cookie".to_string(),
+                format!("authtoken={}", token).to_string(),
+            )
+        }
+
         let client = builder.async_connect().await?;
         let (sink, stream) = client.split();
 
@@ -234,10 +240,10 @@ pub async fn run_emotes(mut erx: tokio::sync::watch::Receiver<EmoteData>) -> Res
             }
         }
 
-        print!("\x1b_Ga=d\x1b\\");
+        // irender::clear_all();
         if final_emotes.len() > 0 {
             for pos in final_emotes.to_owned() {
-                utils::print_emote(pos.0, pos.1, &pos.2);
+                irender::print_emote(pos.0, pos.1)?;
             }
         }
     }
@@ -276,14 +282,21 @@ pub fn run_app<B: Backend>(
                         }
 
                         let term_height: u16 = terminal.size().unwrap().height;
-                        etx.send(EmoteData {
-                            term_size: term_height,
-                            messages: app.message_list.messages.clone(),
-                            message_pos: app.message_list.state.selected().unwrap(),
-                        })
-                        .expect("Error sending EmoteData to etx");
+                        // etx.send(EmoteData {
+                        //     term_size: term_height,
+                        //     messages: app.message_list.messages.clone(),
+                        //     message_pos: app.message_list.state.selected().unwrap(),
+                        // })
+                        // .expect("Error sending EmoteData to etx");
 
-                        // print!("\x1b_Gi=31,a=d;\x1b\\")
+                        if app.config.emotes {
+                            irender::clear_all();
+                            irender::emote_meme(EmoteData {
+                                term_size: term_height,
+                                messages: app.message_list.messages.clone(),
+                                message_pos: app.message_list.state.selected().unwrap(),
+                            })?;
+                        }
                     } else if msg.starts_with("NAMES ") {
                         app.users = utils::get_users(msg.to_string())
                     }
@@ -313,11 +326,18 @@ pub fn run_app<B: Backend>(
                         KeyCode::Char('q') => {
                             return Ok(());
                         }
-                        KeyCode::Char('c') => print!("\x1b_Ga=d\x1b\\"),
+                        KeyCode::Char('c') => irender::clear_all(),
                         KeyCode::Char('r') => {
                             print!("hello");
                             terminal.clear()?;
                             // println!(utils::emotes_remote)::emotes_remote();
+                        }
+                        KeyCode::Char('t') => {}
+                        KeyCode::Char('p') => {
+                            irender::print_one(
+                                "/Users/lsmb/Dev/dggtui/src/emotes_resized/OOOO.png",
+                            )?
+                            // terminal.clear()?;
                         }
                         KeyCode::Char('g') => {
                             app.message_list.bottom();

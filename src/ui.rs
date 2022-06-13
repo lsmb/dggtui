@@ -125,23 +125,22 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     f.render_widget(help_message, chunks[2]);
     f.render_widget(input, chunks[1]);
 
-    if app.input.len() > 0 {
-        let area = suggestion_rect(f.size());
-        let block = Block::default()/* .borders(Borders::ALL) */;
+    if app.config.autocomplete {
+        if app.input.len() > 0 {
+            let area = suggestion_rect(f.size());
+            let block = Block::default()/* .borders(Borders::ALL) */;
 
-        if app.autocomplete.suggestions.len() > 0 {
-            let suggestions = Paragraph::new(app.autocomplete.suggestions.join(" ").to_string())
-                .style(Style::default().fg(Color::Blue))
-                .block(block);
+            if app.autocomplete.suggestions.len() > 0 {
+                let suggestions =
+                    Paragraph::new(app.autocomplete.suggestions.join(" ").to_string())
+                        .style(Style::default().fg(Color::Blue))
+                        .block(block);
 
-            f.render_widget(Clear, area); //this clears out the background
-            f.render_widget(suggestions, area);
+                f.render_widget(Clear, area); //this clears out the background
+                f.render_widget(suggestions, area);
+            }
         }
     }
-}
-
-fn get_suggestions() -> Option<String> {
-    None
 }
 
 fn suggestion_rect(r: Rect) -> Rect {

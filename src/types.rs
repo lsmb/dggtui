@@ -1,4 +1,4 @@
-use crate::utils;
+use crate::{config::Config, utils};
 use serde::{Deserialize, Serialize};
 use tui::widgets::ListState;
 
@@ -14,6 +14,7 @@ pub struct App {
     pub users: Users,
     pub emotes: Vec<String>,
     pub autocomplete: Autocomplete,
+    pub config: Config,
 }
 
 impl<'a> Default for App {
@@ -26,6 +27,7 @@ impl<'a> Default for App {
             users: Users::from(Users::default()),
             emotes: { utils::get_emotenames() },
             autocomplete: Autocomplete::from(Autocomplete::default()),
+            config: Config::default(),
         }
     }
 }
@@ -112,6 +114,24 @@ pub struct ParsedMessage {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum HistoryJSON {
     String(String),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Emote {
+    #[serde(alias = "name")]
+    pub prefix: String,
+    pub twitch: bool,
+    pub theme: u16,
+    pub image: Vec<EmoteImage>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EmoteImage {
+    pub url: String,
+    pub name: String,
+    pub mime: String,
+    pub height: u16,
+    pub width: u16,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]

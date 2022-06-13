@@ -25,10 +25,13 @@ use websocket_lite::Result;
 use tokio::sync::watch;
 // use tokio::{fs::write, sync::mpsc};
 
+mod config;
+mod irender;
 mod threads;
 mod types;
 mod ui;
 mod utils;
+use crate::config::Config;
 use types::EmoteData;
 
 #[tokio::main]
@@ -40,6 +43,13 @@ async fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    let conf = Config::init().await;
+    let mut app = types::App::default();
+
+    if conf.is_ok() {
+        app.config = conf.to_owned().unwrap();
+    }
+
     let (tx, rx) = watch::channel("".to_string());
     let (etx, erx) = watch::channel(EmoteData {
         term_size: 0,
@@ -49,9 +59,11 @@ async fn main() -> Result<()> {
     let (mtx, mrx) = watch::channel("".to_string());
 
     tokio::spawn(async move {
-        threads::run_ws2(tx, mrx).await.unwrap_or_else(|e| {
-            eprintln!("{}", e);
-        })
+        threads::run_ws2(tx, mrx, conf.to_owned().unwrap())
+            .await
+            .unwrap_or_else(|e| {
+                eprintln!("{}", e);
+            })
     });
 
     // tokio::spawn(async move {
@@ -61,15 +73,17 @@ async fn main() -> Result<()> {
     // });
 
     // Emote thread
-    tokio::spawn(async move {
-        threads::run_emotes(erx).await.unwrap_or_else(|e| {
-            eprintln!("{}", e);
-        })
-    });
+    if app.config.emotes {
+        tokio::spawn(async move {
+            threads::run_emotes(erx).await.unwrap_or_else(|e| {
+                eprintln!("{}", e);
+            })
+        });
+    }
 
     let tick_rate = Duration::from_millis(0);
     // create app and run it
-    let mut app = types::App::default();
+    irender::transmit_all(&app).await;
 
     // utils::emotes_remote().await?;
     for msg in utils::get_history().await? {

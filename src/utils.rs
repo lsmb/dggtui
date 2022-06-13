@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::types::{App, Autocomplete, HistoryJSON, ParsedMessage, Users};
+use crate::types::{App, Autocomplete, Emote, HistoryJSON, ParsedMessage, Users};
 use serde_json::Result as JSON_Result;
 use std::borrow::Cow::{Borrowed, Owned};
 use textwrap::Options;
@@ -39,6 +39,11 @@ pub fn get_emotenames() -> Vec<String> {
 
 pub fn parse_message(msg: &str) -> JSON_Result<ParsedMessage> {
     let json: ParsedMessage = serde_json::from_str(msg)?;
+    return Ok(json);
+}
+
+pub fn parse_emote_json(json_data: &str) -> JSON_Result<Emote> {
+    let json: Emote = serde_json::from_str(json_data)?;
     return Ok(json);
 }
 

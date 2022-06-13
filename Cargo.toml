@@ -12,6 +12,9 @@ serde = { version = "1", features = ["derive"] }
 unicode-segmentation = "1.2"
 unicode-width = "0.1"
 textwrap = "0.15"
+config = "0.13.1"
+dirs = "4.0"
+
 
 # Image stuff
 hyper = { version = "0.14", features = ["full"] }
