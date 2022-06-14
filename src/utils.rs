@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::types::{App, Autocomplete, Emote, HistoryJSON, ParsedMessage, Users};
+use crate::types::{App, Autocomplete, Emote, HistoryJSON, ParsedMessage, User, Users};
 use serde_json::Result as JSON_Result;
 use std::borrow::Cow::{Borrowed, Owned};
 use textwrap::Options;
@@ -36,6 +36,32 @@ pub fn get_emotenames() -> Vec<String> {
 
     names
 }
+
+// pub async fn get_emotenames() -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+//     let https = HttpsConnector::new();
+//     let client = Client::builder().build::<_, hyper::Body>(https);
+
+//     // Parse an `http::Uri`...
+//     let uri = "https://cdn.destiny.gg/emotes/emotes.json".parse()?;
+
+//     // Await the response...
+//     let resp = client.get(uri).await?;
+
+//     // println!("Response: {}", resp.status());
+
+//     let bytes = body::to_bytes(resp.into_body()).await?;
+//     // let json_str: &str = str::from_utf8(&bytes).unwrap();
+//     // println!("Hey: {}", json_str);
+
+//     let emote_json: Vec<Emote> = serde_json::from_slice(&bytes)?;
+
+//     let mut names: Vec<String> = Vec::new();
+
+//     for emote in emote_json {
+//         names.push(emote.name.to_owned())
+//     }
+//     Ok(names)
+// }
 
 pub fn parse_message(msg: &str) -> JSON_Result<ParsedMessage> {
     let json: ParsedMessage = serde_json::from_str(msg)?;
@@ -193,6 +219,15 @@ pub fn format_message(msg: ParsedMessage, width: u16) -> Vec<Spans<'static>> {
     }
 
     message_lines
+}
+
+pub fn format_user(user: &User) -> Spans<'static> {
+    Spans::from(Span::styled(
+        format!("{} ", user.nick),
+        Style::default()
+            .fg(Color::from_tier(get_tier(user.features.to_owned())))
+            .add_modifier(Modifier::BOLD),
+    ))
 }
 
 pub fn wrap_message(msg: &ParsedMessage, width: u16) -> Vec<String> {

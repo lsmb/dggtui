@@ -1,3 +1,4 @@
+use bytes::Bytes;
 /// A simple example demonstrating how to handle user input. This is
 /// a bit out of the scope of the library as it does not provide any
 /// input handling out of the box. However, it may helps some to get
@@ -32,7 +33,7 @@ mod types;
 mod ui;
 mod utils;
 use crate::config::Config;
-use types::EmoteData;
+use types::{EmoteData, InternalMessage, InternalMessageType};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -57,9 +58,14 @@ async fn main() -> Result<()> {
         message_pos: 0,
     });
     let (mtx, mrx) = watch::channel("".to_string());
+    let (itx, mut irx) = watch::channel(InternalMessage {
+        message_type: InternalMessageType::COMMAND,
+        message: "Initialize".to_string(),
+        data: Bytes::new(),
+    });
 
     tokio::spawn(async move {
-        threads::run_ws2(tx, mrx, conf.to_owned().unwrap())
+        threads::run_ws2(tx, mrx, itx, irx, conf.to_owned().unwrap())
             .await
             .unwrap_or_else(|e| {
                 eprintln!("{}", e);
@@ -81,16 +87,17 @@ async fn main() -> Result<()> {
         });
     }
 
-    let tick_rate = Duration::from_millis(0);
-    // create app and run it
-    irender::transmit_all(&app).await;
+    // irender::transmit_all(&app).await;
 
     // utils::emotes_remote().await?;
     for msg in utils::get_history().await? {
-        app.message_list.messages.push((msg.to_owned(), 1));
+        app.message_list.items.push((msg.to_owned(), 1));
         // println!("{}", msg)
     }
 
+    let tick_rate = Duration::from_millis(5);
+
+    // create app and run it
     let res = threads::run_app(&mut terminal, app, rx, etx, mtx, tick_rate);
 
     // restore terminal

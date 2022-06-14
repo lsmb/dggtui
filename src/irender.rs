@@ -26,35 +26,35 @@ pub fn clear_all() {
     print!("\x1b_Ga=d\x1b\\")
 }
 
-pub async fn transmit_all(app: &App) {
-    let paths = fs::read_dir("/Users/lsmb/Dev/dggtui/src/emotes_resized/").unwrap();
-    let mut names: Vec<String> = vec![];
-    for path in paths {
-        let pathstr: String = path.unwrap().path().to_str().unwrap().to_string();
+// pub async fn transmit_all(app: &App) {
+//     let paths = fs::read_dir("/Users/lsmb/Dev/dggtui/src/emotes_resized/").unwrap();
+//     let mut names: Vec<String> = vec![];
+//     for path in paths {
+//         let pathstr: String = path.unwrap().path().to_str().unwrap().to_string();
 
-        names.push(format!("{}", &pathstr));
-    }
+//         names.push(format!("{}", &pathstr));
+//     }
 
-    let mut esc_msg: Vec<String> = Vec::new();
+//     let mut esc_msg: Vec<String> = Vec::new();
 
-    for (i, path) in names.iter().enumerate() {
-        // println!("Path {}: {}", i + 1, path);
-        esc_msg.push(format!(
-            "\x1b_Gq=2,f=100,t=f,i={};{}\x1b\\",
-            i + 1,
-            encode(path)
-        ));
-        // io::stdout()::write(dst, src)
-        //     .write(format!("\x1b_Gf=100,t=f,i={};{}\x1b\\", i + 1, encode(path)).as_bytes())
-        //     .await?;
-        // // stdout().write();
-    }
+//     for (i, path) in names.iter().enumerate() {
+//         // println!("Path {}: {}", i + 1, path);
+//         esc_msg.push(format!(
+//             "\x1b_Gq=2,f=100,t=f,i={};{}\x1b\\",
+//             i + 1,
+//             encode(path)
+//         ));
+//         // io::stdout()::write(dst, src)
+//         //     .write(format!("\x1b_Gf=100,t=f,i={};{}\x1b\\", i + 1, encode(path)).as_bytes())
+//         //     .await?;
+//         // // stdout().write();
+//     }
 
-    // print!("\x1b_Gf=100,t=f,i={};{}\x1b\\", 1, encode(&names[0]));
+//     // print!("\x1b_Gf=100,t=f,i={};{}\x1b\\", 1, encode(&names[0]));
 
-    print!("{}", esc_msg.join(""));
-    // println!("All transmitted");
-}
+//     print!("{}", esc_msg.join(""));
+//     // println!("All transmitted");
+// }
 
 pub fn print_emote(x: u16, y: u16) -> Result<(), crossterm::ErrorKind> {
     // println!("Hello. {}", path);

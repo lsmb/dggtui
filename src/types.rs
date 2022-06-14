@@ -1,15 +1,20 @@
 use crate::{config::Config, utils};
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use tui::widgets::ListState;
+use tui::widgets::{ListItem, ListState};
 
 /// App holds the state of the application
-pub struct App {
+pub struct App<'a> {
     /// Current value of the input box
     pub input: String,
     /// Current input mode
     pub input_mode: InputMode,
+    pub tab_titles: Vec<String>,
+    pub tab_index: usize,
     /// History of recorded messages
-    pub message_list: StatefulList<(String, usize)>,
+    pub message_list: MessageList<(String, usize)>,
+    pub message_spans: MessageList<ListItem<'a>>,
+    pub user_list: UserList<User>,
     pub show_suggestion: bool,
     pub users: Users,
     pub emotes: Vec<String>,
@@ -17,12 +22,16 @@ pub struct App {
     pub config: Config,
 }
 
-impl<'a> Default for App {
-    fn default() -> App {
+impl<'a> Default for App<'a> {
+    fn default() -> App<'a> {
         App {
             input: String::new(),
             input_mode: InputMode::Normal,
-            message_list: StatefulList::with_items(vec![]),
+            tab_titles: vec!["Chat".to_string(), "Users".to_string()],
+            tab_index: 0,
+            message_list: MessageList::with_items(vec![]),
+            message_spans: MessageList::with_items(vec![]),
+            user_list: UserList::with_items(vec![]),
             show_suggestion: false,
             users: Users::from(Users::default()),
             emotes: { utils::get_emotenames() },
@@ -32,13 +41,25 @@ impl<'a> Default for App {
     }
 }
 
-impl<'a> App {
+impl<'a> App<'a> {
     // fn on_tick(&mut self) {
     //     // let event = self.events.remove(0);
     //     // self.events.push(event);
     //     self.message_list.messages.push(("yooo".to_string(), 1));
     //     self.input.push('h');
     // }
+
+    pub fn next_tab(&mut self) {
+        self.tab_index = (self.tab_index + 1) % self.tab_titles.len();
+    }
+
+    pub fn prev_tab(&mut self) {
+        if self.tab_index > 0 {
+            self.tab_index -= 1;
+        } else {
+            self.tab_index = self.tab_titles.len() - 1;
+        }
+    }
 }
 
 pub enum InputMode {
@@ -46,24 +67,24 @@ pub enum InputMode {
     Editing,
 }
 
-pub struct StatefulList<T> {
+pub struct MessageList<T> {
     pub state: ListState,
-    pub messages: Vec<T>,
+    pub items: Vec<T>,
 }
 
-impl<T> StatefulList<T> {
-    fn with_items(messages: Vec<T>) -> StatefulList<T> {
-        StatefulList {
+impl<T> MessageList<T> {
+    fn with_items(items: Vec<T>) -> MessageList<T> {
+        MessageList {
             state: ListState::default(),
-            messages,
+            items,
         }
     }
 
     pub fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
-                if i >= self.messages.len() - 1 {
-                    self.messages.len() - 1
+                if i >= self.items.len() - 1 {
+                    self.items.len() - 1
                 } else {
                     i + 1
                 }
@@ -92,7 +113,65 @@ impl<T> StatefulList<T> {
     }
 
     pub fn bottom(&mut self) {
-        self.state.select(Some(self.messages.len() - 1));
+        self.state.select(Some(self.items.len() - 1));
+    }
+
+    pub fn top(&mut self) {
+        self.state.select(Some(0));
+    }
+}
+
+pub struct UserList<T> {
+    pub state: ListState,
+    pub items: Vec<T>,
+}
+
+impl<T> UserList<T> {
+    fn with_items(items: Vec<T>) -> UserList<T> {
+        UserList {
+            state: ListState::default(),
+            items,
+        }
+    }
+
+    pub fn next(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i >= self.items.len() - 1 {
+                    self.items.len() - 1
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
+
+    pub fn previous(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    0
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
+
+    pub fn unselect(&mut self) {
+        self.state.select(None);
+    }
+
+    pub fn bottom(&mut self) {
+        self.state.select(Some(self.items.len() - 1));
+    }
+
+    pub fn top(&mut self) {
+        self.state.select(Some(0));
     }
 }
 
@@ -118,8 +197,8 @@ pub enum HistoryJSON {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Emote {
-    #[serde(alias = "name")]
-    pub prefix: String,
+    #[serde(alias = "prefix")]
+    pub name: String,
     pub twitch: bool,
     pub theme: u16,
     pub image: Vec<EmoteImage>,
@@ -184,4 +263,19 @@ pub struct User {
 pub struct Users {
     pub connectioncount: u16,
     pub users: Vec<User>,
+}
+
+#[derive(Debug, Clone)]
+pub enum InternalMessageType {
+    UPDATE,
+    ERROR,
+    COMMAND,
+    PING,
+}
+
+#[derive(Debug, Clone)]
+pub struct InternalMessage {
+    pub message_type: InternalMessageType,
+    pub message: String,
+    pub data: Bytes,
 }
