@@ -31,187 +31,192 @@ pub async fn run_ws2(
     mut irx: tokio::sync::watch::Receiver<InternalMessage>,
     config: Config,
 ) -> Result<()> {
-    let url = "wss://chat.destiny.gg/ws".to_owned();
-    let mut builder = websocket_lite::ClientBuilder::new(&url)?;
+    while "hei" != "suh" {
+        let url = "wss://chat.destiny.gg/ws".to_owned();
+        let mut builder = websocket_lite::ClientBuilder::new(&url)?;
 
-    if let Some(token) = config.token.to_owned() {
-        builder.add_header(
-            "Cookie".to_string(),
-            format!("authtoken={}", token).to_string(),
-        )
-    }
-
-    let client = builder.async_connect().await?;
-    let (sink, stream) = client.split();
-
-    let send_loop = async {
-        let mut sink = sink;
-        let mut message: String = String::new();
-        let mut message_changed = false;
-
-        let mut ping_data: Bytes = Bytes::new();
-        let mut do_ping = false;
-
-        while message != "/quit" {
-            // let res = select(irx.changed().boxed(), mrx.changed().boxed()).await;
-
-            tokio::select! {
-                val = irx.changed() => {
-                    if val.is_ok() {
-                        let ping_msg: &InternalMessage = &*irx.borrow();
-                        ping_data = ping_msg.data.to_owned();
-                        do_ping = true;
-                    }
-                }
-                val = mrx.changed() => {
-                    if val.is_ok() {
-                        let msg = &*mrx.borrow();
-                        message = msg.to_string();
-                        message_changed = true;
-                    }
-                }
-            };
-
-            if message_changed {
-                let message_data = Message::new(
-                    Opcode::Text,
-                    format!("MSG {{ \"data\": \"{}\" }}", &message),
-                )?;
-                sink.send(message_data).await?;
-                message_changed = false;
-            } else if do_ping {
-                sink.send(Message::pong(ping_data.to_owned())).await?;
-                do_ping = false;
-            }
+        if let Some(token) = config.token.to_owned() {
+            builder.add_header(
+                "Cookie".to_string(),
+                format!("authtoken={}", token).to_string(),
+            )
         }
 
-        Ok(())
-    };
+        let client = builder.async_connect().await?;
+        let (sink, stream) = client.split();
 
-    let recv_loop = async {
-        let mut stream_mut = stream;
+        let send_loop = async {
+            let mut sink = sink;
+            let mut message: String = String::new();
+            let mut message_changed = false;
 
-        loop {
-            let (msg, stream) = stream_mut.into_future().await;
+            let mut ping_data: Bytes = Bytes::new();
+            let mut do_ping = false;
 
-            let msg = if let Some(msg) = msg {
-                msg?
-            } else {
-                stream_mut = stream;
-                break;
-            };
+            while message != "/quit" {
+                // let res = select(irx.changed().boxed(), mrx.changed().boxed()).await;
 
-            if let Opcode::Text = msg.opcode() {
-                if let Some(text) = msg.as_text() {
-                    let msg_text: String = text.to_string();
-                    if msg_text.contains("/quit") {
-                        break;
+                tokio::select! {
+                    val = irx.changed() => {
+                        if val.is_ok() {
+                            let ping_msg: &InternalMessage = &*irx.borrow();
+                            ping_data = ping_msg.data.to_owned();
+                            do_ping = true;
+                        } else if val.is_err() {
+                            break
+                        }
                     }
-                    let res = tx.send(msg_text);
+                    val = mrx.changed() => {
+                        if val.is_ok() {
+                            let msg = &*mrx.borrow();
+                            message = msg.to_string();
+                            message_changed = true;
+                        } else if val.is_err() {
+                            break;
+                        }
+                    }
+                };
+
+                if message_changed {
+                    let message_data = Message::new(
+                        Opcode::Text,
+                        format!("MSG {{ \"data\": \"{}\" }}", &message),
+                    )?;
+                    sink.send(message_data).await?;
+                    message_changed = false;
+                } else if do_ping {
+                    sink.send(Message::pong(ping_data.to_owned())).await?;
+                    do_ping = false;
                 }
             }
 
-            if let Opcode::Ping = msg.opcode() {
-                itx.send(InternalMessage {
-                    message_type: types::InternalMessageType::PING,
-                    message: "WS_PING".to_string(),
-                    data: msg.into_data(),
-                })?;
-            }
+            Ok(())
+        };
 
-            stream_mut = stream;
-        }
-        println!("Connection closed");
+        let recv_loop = async {
+            let mut stream_mut = stream;
 
-        Ok(()) as Result<()>
-    };
+            loop {
+                let (msg, stream) = stream_mut.into_future().await;
 
-    let result = future::select(send_loop.boxed(), recv_loop.boxed())
-        .await
-        .into_inner()
-        .0;
-
-    Ok(())
-}
-
-pub async fn run_ws(
-    tx: tokio::sync::watch::Sender<String>,
-    mut mrx: tokio::sync::watch::Receiver<String>,
-) -> Result<()> {
-    let url = "wss://chat.destiny.gg/ws".to_owned();
-    let mut builder = websocket_lite::ClientBuilder::new(&url)?;
-
-    builder.add_header(
-        "Cookie".to_string(),
-        "authtoken=7uooLJ8yxtTmCBnjaloirWpXXpbRNgOWJ0ZJLsyvjX8xoTavppOf7OdL1hbCtfVm".to_string(),
-    );
-
-    let mut ws_stream = builder.async_connect().await?;
-
-    loop {
-        let mut message: String = String::new();
-        let mut changed: bool = false;
-
-        if mrx.has_changed().unwrap() {
-            let channel_message = &*mrx.borrow_and_update();
-
-            if channel_message.to_string() == "quit".to_string() {
-                break;
-            }
-
-            message = channel_message.to_string();
-            // message_to_send = msg.to_string();
-            changed = true;
-        }
-
-        if changed == true {
-            ws_stream
-                .send(Message::text(format!(
-                    "MSG {{ \"data\": \"{}\" }}",
-                    &message
-                )))
-                .await?;
-            // ws_stream.send(message);
-            // println!("Hello test: {}", message);
-            ws_stream.next().await;
-            changed = false;
-        } else {
-            let msg: Option<Result<Message>> = ws_stream.next().await;
-
-            let msg = if let Some(msg) = msg {
-                msg
-            } else {
-                break;
-            };
-
-            let msg = if let Ok(msg) = msg {
-                msg
-            } else {
-                let _ = ws_stream.send(Message::close(None)).await;
-                break;
-            };
-
-            match msg.opcode() {
-                Opcode::Text => {
-                    // println!("{}", msg.as_text().unwrap());
-
-                    // ws_stream.send(msg).await?
-                    let msg: String = msg.as_text().unwrap().to_string();
-                    tx.send(msg)?;
-                }
-                Opcode::Binary => ws_stream.send(msg).await?,
-                Opcode::Ping => ws_stream.send(Message::pong(msg.into_data())).await?,
-                Opcode::Close => {
-                    let _ = ws_stream.send(Message::close(None)).await;
+                let msg = if let Some(msg) = msg {
+                    msg?
+                } else {
+                    stream_mut = stream;
                     break;
-                }
-                Opcode::Pong => {}
-            }
-        }
-    }
+                };
 
+                if let Opcode::Text = msg.opcode() {
+                    if let Some(text) = msg.as_text() {
+                        let msg_text: String = text.to_string();
+                        if msg_text.contains("/quit") {
+                            break;
+                        }
+                        let res = tx.send(msg_text);
+                    }
+                }
+
+                if let Opcode::Ping = msg.opcode() {
+                    itx.send(InternalMessage {
+                        message_type: types::InternalMessageType::PING,
+                        message: "WS_PING".to_string(),
+                        data: msg.into_data(),
+                    })?;
+                }
+
+                stream_mut = stream;
+            }
+            println!("Connection closed");
+
+            Ok(()) as Result<()>
+        };
+
+        let result = future::select(send_loop.boxed(), recv_loop.boxed())
+            .await
+            .into_inner()
+            .0;
+    }
     Ok(())
 }
+
+// pub async fn run_ws(
+//     tx: tokio::sync::watch::Sender<String>,
+//     mut mrx: tokio::sync::watch::Receiver<String>,
+// ) -> Result<()> {
+//     let url = "wss://chat.destiny.gg/ws".to_owned();
+//     let mut builder = websocket_lite::ClientBuilder::new(&url)?;
+
+//     builder.add_header(
+//         "Cookie".to_string(),
+//         "authtoken=7uooLJ8yxtTmCBnjaloirWpXXpbRNgOWJ0ZJLsyvjX8xoTavppOf7OdL1hbCtfVm".to_string(),
+//     );
+
+//     let mut ws_stream = builder.async_connect().await?;
+
+//     loop {
+//         let mut message: String = String::new();
+//         let mut changed: bool = false;
+
+//         if mrx.has_changed().unwrap() {
+//             let channel_message = &*mrx.borrow_and_update();
+
+//             if channel_message.to_string() == "quit".to_string() {
+//                 break;
+//             }
+
+//             message = channel_message.to_string();
+//             // message_to_send = msg.to_string();
+//             changed = true;
+//         }
+
+//         if changed == true {
+//             ws_stream
+//                 .send(Message::text(format!(
+//                     "MSG {{ \"data\": \"{}\" }}",
+//                     &message
+//                 )))
+//                 .await?;
+//             // ws_stream.send(message);
+//             // println!("Hello test: {}", message);
+//             ws_stream.next().await;
+//             changed = false;
+//         } else {
+//             let msg: Option<Result<Message>> = ws_stream.next().await;
+
+//             let msg = if let Some(msg) = msg {
+//                 msg
+//             } else {
+//                 break;
+//             };
+
+//             let msg = if let Ok(msg) = msg {
+//                 msg
+//             } else {
+//                 let _ = ws_stream.send(Message::close(None)).await;
+//                 break;
+//             };
+
+//             match msg.opcode() {
+//                 Opcode::Text => {
+//                     // println!("{}", msg.as_text().unwrap());
+
+//                     // ws_stream.send(msg).await?
+//                     let msg: String = msg.as_text().unwrap().to_string();
+//                     tx.send(msg)?;
+//                 }
+//                 Opcode::Binary => ws_stream.send(msg).await?,
+//                 Opcode::Ping => ws_stream.send(Message::pong(msg.into_data())).await?,
+//                 Opcode::Close => {
+//                     let _ = ws_stream.send(Message::close(None)).await;
+//                     break;
+//                 }
+//                 Opcode::Pong => {}
+//             }
+//         }
+//     }
+
+//     Ok(())
+// }
 
 pub async fn run_emotes(mut erx: tokio::sync::watch::Receiver<EmoteData>) -> Result<()> {
     while erx.changed().await.is_ok() {
@@ -326,6 +331,7 @@ pub fn run_app<B: Backend>(
                         // for user in app.users.users {
 
                         // }
+                    } else if msg.starts_with("JOIN ") {
                     }
                 }
             }
