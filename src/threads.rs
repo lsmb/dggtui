@@ -351,6 +351,7 @@ pub fn run_app<B: Backend>(
             // }
 
             if let Event::Key(key) = event::read()? {
+                // println!("Meep, {:?}", key);
                 match app.input_mode {
                     InputMode::Normal => match key.code {
                         KeyCode::Char('e') => {
@@ -434,25 +435,31 @@ pub fn run_app<B: Backend>(
                             // app.message_list.messages.push((message.to_owned(), 1));
                         }
                         KeyCode::Char(c) => {
-                            if app.autocomplete.tabbing == true {
-                                // app.input.push(' ');
-                                app.autocomplete.unselect();
-                                app.autocomplete.tabbing = false
-                            }
-                            app.input.push(c);
-                            // app.autocomplete.last_word = app.input.split(' ').last();
-                            let autocomplete: Autocomplete = utils::get_suggestions(
-                                app.input.to_owned(),
-                                app.autocomplete.to_owned(),
-                                app.users.to_owned(),
-                                app.emotes.to_owned(),
-                            );
+                            if key.modifiers == KeyModifiers::CONTROL && c == 'w' {
+                                let mut split_input: Vec<&str> = app.input.split(' ').collect();
+                                split_input.pop();
+                                app.input = split_input.join(" ");
+                            } else {
+                                if app.autocomplete.tabbing == true {
+                                    // app.input.push(' ');
+                                    app.autocomplete.unselect();
+                                    app.autocomplete.tabbing = false
+                                }
+                                app.input.push(c);
+                                // app.autocomplete.last_word = app.input.split(' ').last();
+                                let autocomplete: Autocomplete = utils::get_suggestions(
+                                    app.input.to_owned(),
+                                    app.autocomplete.to_owned(),
+                                    app.users.to_owned(),
+                                    app.emotes.to_owned(),
+                                );
 
-                            app.autocomplete = autocomplete;
-                            app.autocomplete.unselect();
+                                app.autocomplete = autocomplete;
+                                app.autocomplete.unselect();
+                            }
                         }
                         KeyCode::Backspace => {
-                            if key.modifiers == KeyModifiers::ALT {
+                            if key.modifiers == KeyModifiers::CONTROL {
                                 let mut split_input: Vec<&str> = app.input.split(' ').collect();
                                 split_input.pop();
                                 app.input = split_input.join(" ");
