@@ -1,5 +1,9 @@
 #### Config
-Example:
+A TUI Chat client for DGG
+
+Extremely WIP.
+
+Example config:
 ```toml
 username = "DGGName"
 token = "DGGApiToken"

@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use futures::future::{self, select, Either, FutureExt};
+use futures::future::{self, FutureExt};
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use websocket_lite::{Message, Opcode, Result};
@@ -9,20 +9,16 @@ use serde_json::Result as JSON_Result;
 
 use crate::config::Config;
 use crate::irender;
-use crate::types::{self, Autocomplete, InternalMessage, InternalMessageType};
+use crate::types::{self, Autocomplete, InternalMessage};
 use crate::ui::ui;
 use crate::utils;
 use types::{App, EmoteData, InputMode, ParsedMessage};
 
 use tui::{backend::Backend, Terminal};
 
-use crossterm::event::{self, Event, KeyCode, KeyModifiers, MouseEvent};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 
-use std::thread;
-use std::{
-    io,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 pub async fn run_ws2(
     tx: tokio::sync::watch::Sender<String>,

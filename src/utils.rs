@@ -1,20 +1,18 @@
 use std::fs;
 
-use crate::types::{App, Autocomplete, Emote, HistoryJSON, ParsedMessage, User, Users};
+use crate::types::{Autocomplete, Emote, ParsedMessage, User, Users};
 use serde_json::Result as JSON_Result;
 use std::borrow::Cow::{Borrowed, Owned};
 use textwrap::Options;
 use tui::{
-    style::{self, Color, Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Span, Spans},
 };
 
 use std::str;
 
 use hyper::body;
-use hyper::body::HttpBody as _;
 use hyper::Client;
-use hyper::{Body, Response};
 use hyper_tls::HttpsConnector;
 
 use viuer::Config;
@@ -73,88 +71,18 @@ pub fn parse_emote_json(json_data: &str) -> JSON_Result<Emote> {
     return Ok(json);
 }
 
-// async fn body_to_string(req: Request<Body>) -> String {
-//     let body_bytes = hyper::body::to_bytes(req.into_body()).await;
-//     String::from_utf8(body_bytes.to_vec()).unwrap()
-// }
-
 pub async fn get_history() -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let https = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(https);
 
-    // Parse an `http::Uri`...
     let uri = "https://www.destiny.gg/api/chat/history".parse()?;
 
-    // Await the response...
     let resp = client.get(uri).await?;
 
-    // println!("Response: {}", resp.status());
-
     let bytes = body::to_bytes(resp.into_body()).await?;
-    // let json_str: &str = str::from_utf8(&bytes).unwrap();
-    // println!("Hey: {}", json_str);
 
     let history_json: Vec<String> = serde_json::from_slice(&bytes)?;
-    let mut messages: Vec<ParsedMessage> = Vec::new();
-
-    // for item in history_json {
-    //     if item.starts_with("MSG ") {
-    //         messages.push(parse_message(&item[4..]).unwrap())
-    //     }
-    // }
-
-    // let body = resp.into_body();
-    // let meme: String = body_to_string(body).await;
-
-    // let mut json: String = String::new();
-    // while let Some(chunk) = resp.body_mut().data().await {
-    //     // println!("Chunk: {:?}", &chunk?);
-    //     json = format!("{}{}", json, body_to_string(&chunk?).await);
-    // }
     Ok(history_json)
-}
-
-pub async fn emotes_remote() -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    let https = HttpsConnector::new();
-    let client = Client::builder().build::<_, hyper::Body>(https);
-
-    // Parse an `http::Uri`...
-    let uri = "https://cdn.destiny.gg/emotes/emotes.json".parse()?;
-
-    // Await the response...
-    let mut resp = client.get(uri).await?;
-
-    println!("Response: {}", resp.status());
-
-    // let body = resp
-    //     .into_body()
-    //     .map_err(|_| ())
-    //     .fold(vec![], |mut acc, chunk| {
-    //         acc.extend_from_slice(&chunk);
-    //         Ok(acc)
-    //     })
-    //     .and_then(|v| String::from_utf8(v).map_err(|_| ()));
-
-    // let (_, body) = resp.into_parts();
-    let bytes = body::to_bytes(resp.into_body()).await?;
-    let sparkle_heart = str::from_utf8(&bytes).unwrap();
-    println!("Hey: {}", sparkle_heart);
-
-    let s: Vec<String> = serde_json::from_slice(&bytes)?;
-
-    for item in s {
-        println!("ITEM: {:?}", item)
-    }
-
-    // let body = resp.into_body();
-    // let meme: String = body_to_string(body).await;
-
-    let mut json: String = String::new();
-    // while let Some(chunk) = resp.body_mut().data().await {
-    //     // println!("Chunk: {:?}", &chunk?);
-    //     json = format!("{}{}", json, body_to_string(&chunk?).await);
-    // }
-    Ok("Hello world".to_string())
 }
 
 pub fn parse_users(msg: &str) -> JSON_Result<Users> {

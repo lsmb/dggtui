@@ -1,15 +1,4 @@
 use bytes::Bytes;
-/// A simple example demonstrating how to handle user input. This is
-/// a bit out of the scope of the library as it does not provide any
-/// input handling out of the box. However, it may helps some to get
-/// started.
-///
-/// This is a very simple example:
-///   * A input box always focused. Every character you type is registered
-///   here
-///   * Pressing Backspace erases a character
-///   * Pressing Enter pushes the current input in the history of previous
-///   messages
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
@@ -24,7 +13,6 @@ use serde_json::Result as JSON_Result;
 use websocket_lite::Result;
 
 use tokio::sync::watch;
-// use tokio::{fs::write, sync::mpsc};
 
 mod config;
 mod irender;
@@ -58,7 +46,7 @@ async fn main() -> Result<()> {
         message_pos: 0,
     });
     let (mtx, mrx) = watch::channel("".to_string());
-    let (itx, mut irx) = watch::channel(InternalMessage {
+    let (itx, irx) = watch::channel(InternalMessage {
         message_type: InternalMessageType::COMMAND,
         message: "Initialize".to_string(),
         data: Bytes::new(),
@@ -72,12 +60,6 @@ async fn main() -> Result<()> {
             })
     });
 
-    // tokio::spawn(async move {
-    //     threads::run_ws_sender(mrx).await.unwrap_or_else(|e| {
-    //         eprintln!("{}", e);
-    //     })
-    // });
-
     // Emote thread
     if app.config.emotes {
         tokio::spawn(async move {
@@ -87,12 +69,8 @@ async fn main() -> Result<()> {
         });
     }
 
-    // irender::transmit_all(&app).await;
-
-    // utils::emotes_remote().await?;
     for msg in utils::get_history().await? {
         app.message_list.items.push((msg.to_owned(), 1));
-        // println!("{}", msg)
     }
 
     let tick_rate = Duration::from_millis(5);
@@ -115,53 +93,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
-// async fn run_ws_sender(mrx: tokio::sync::watch::Receiver<String>) -> Result<()> {
-//     let url = "wss://chat.destiny.gg/ws".to_owned();
-//     let mut builder = websocket_lite::ClientBuilder::new(&url)?;
-
-//     builder.add_header(
-//         "Cookie".to_string(),
-//         "authtoken=7uooLJ8yxtTmCBnjaloirWpXXpbRNgOWJ0ZJLsyvjX8xoTavppOf7OdL1hbCtfVm".to_string(),
-//     );
-
-//     let mut ws_stream = builder.async_connect().await?;
-
-//     let mut message: String = String::new();
-//     let mut changed: bool = false;
-
-//     // loop {
-//     // if mrx.has_changed().unwrap() {
-//     //     let msg = &*mrx.borrow_and_update();
-
-//     //     if msg.to_string() == "quit".to_string() {
-//     //         break;
-//     //     }
-
-//     //     message = msg.to_string();
-//     //     // message_to_send = msg.to_string();
-//     //     // changed = true;
-//     // }
-
-//     // if changed == true {
-//     ws_stream.send(Message::text("test".to_string())).await?;
-//     //     changed = false;
-//     // }
-//     // }
-
-//     // if changed == true {
-//     //     println!("{}", message_to_send.to_owned());
-//     //     match ws_stream.send(Message::new(Opcode::Text, "hello")?).await {
-//     //         Ok(sk) => {
-//     //             // ... use sk ...
-//     //         }
-//     //         Err(e) => {
-//     //             println!("Error is: {}", e)
-//     //         }
-//     //     }
-//     //     changed = false;
-//     //     ws_stream.next().await;
-//     // }
-
-//     Ok(())
-// }
